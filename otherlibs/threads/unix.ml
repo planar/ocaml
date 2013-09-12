@@ -663,7 +663,7 @@ type socket_float_option =
 type socket_error_option = SO_ERROR
 
 module SO: sig
-  type ('opt, 'v) t
+  type (#'opt, #'v) t
   val bool: (socket_bool_option, bool) t
   val int: (socket_int_option, int) t
   val optint: (socket_optint_option, int option) t

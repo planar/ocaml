@@ -71,7 +71,7 @@ type int32_elt
 type int64_elt
 type nativeint_elt
 
-type ('a, 'b) kind
+type (#'a, #'b) kind
 (** To each element kind is associated an OCaml type, which is
    the type of OCaml values that can be stored in the big array
    or read back from it.  This type is not necessarily the same
@@ -168,7 +168,7 @@ type fortran_layout
    Each layout style is identified at the type level by the
    abstract types {!Bigarray.c_layout} and [fortran_layout] respectively. *)
 
-type 'a layout
+type #'a layout
 (** The type ['a layout] represents one of the two supported
    memory layouts: C-style if ['a] is {!Bigarray.c_layout}, Fortran-style
    if ['a] is {!Bigarray.fortran_layout}. *)

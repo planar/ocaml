@@ -31,7 +31,7 @@ true: use_stdlib
 # The stdlib neither requires the stdlib nor debug information
 <stdlib/**>: -use_stdlib, -debug
 
-<**/*.ml*>: warn_error_A
+<**/*.ml*>: warn_error_a
 
 <{bytecomp,driver,stdlib,tools,asmcomp,toplevel,typing,utils,lex,parsing}/**>: strict_sequence
 

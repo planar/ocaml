@@ -18,7 +18,7 @@ include ../../config/Makefile
 # Compilation options
 CAMLC=../../boot/ocamlrun ../../ocamlc -I ../../stdlib -I ../win32unix
 CAMLOPT=../../boot/ocamlrun ../../ocamlopt -I ../../stdlib -I ../win32unix
-COMPFLAGS=-warn-error A -g
+COMPFLAGS=-warn-error A-40 -g
 MKLIB=../../boot/ocamlrun ../../tools/ocamlmklib
 CFLAGS=-I../../byterun $(EXTRACFLAGS)
 

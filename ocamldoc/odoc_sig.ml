@@ -639,14 +639,19 @@ module Analyser =
                       ty_name = Name.concat current_module_name name.txt ;
                       ty_info = assoc_com ;
                       ty_parameters =
-                        List.map2 (fun p (co,cn,_) ->
+                        List.map2 (fun p (co,cn,_,_) ->
                                      (Odoc_env.subst_type new_env p,
                                       co, cn)
                                   )
                         sig_type_decl.Types.type_params
                         sig_type_decl.Types.type_variance;
                       ty_kind = type_kind;
-                      ty_private = sig_type_decl.Types.type_private;
+                      ty_private = 
+                        (
+                          match sig_type_decl.Types.type_transparence with 
+                            Type_public -> Public 
+                          | _ -> Private
+                        );
                       ty_manifest =
                       (match sig_type_decl.Types.type_manifest with
                         None -> None

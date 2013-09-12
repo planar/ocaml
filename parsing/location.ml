@@ -245,6 +245,24 @@ let print_loc ppf loc =
   end
 ;;
 
+let to_string loc =
+  let (file, line, startchar) = get_pos_info loc.loc_start in
+  let endchar = loc.loc_end.pos_cnum - loc.loc_start.pos_cnum + startchar in
+    sprintf "%s%s%s%i%s%s" 
+            msg_file 
+            (show_filename file)
+            msg_line 
+            line
+            (if startchar >= 0 then
+               sprintf "%s%i%s%i" 
+                       msg_chars 
+                       startchar 
+                       msg_to 
+                       endchar
+             else "")
+            msg_colon
+;;
+
 let print ppf loc =
   if loc.loc_start.pos_fname = "//toplevel//"
   && highlight_locations ppf loc none then ()

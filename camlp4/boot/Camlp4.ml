@@ -2073,7 +2073,7 @@ module Sig =
           
         val string_of_tag : 'a tag -> string
           
-        module Pack (X : sig type 'a t
+        module Pack (X : sig type #'a t
                               end) :
           sig
             type pack
@@ -2295,7 +2295,7 @@ module Sig =
               
             module Entry :
               sig
-                type 'a t
+                type #'a t
                 
                 val mk : gram -> string -> 'a t
                   
@@ -2363,7 +2363,7 @@ module Sig =
               
             module Entry :
               sig
-                type 'a t
+                type #'a t
                 
                 val mk : string -> 'a t
                   
@@ -13889,7 +13889,7 @@ module Struct =
             
             external dyn_tag : 'a tag -> dyn tag = "%identity"
               
-            module Pack (X : sig type 'a t
+            module Pack (X : sig type #'a t
                                   end) =
               struct
                 type pack = ((dyn tag) * Obj.t)
@@ -14477,9 +14477,10 @@ module Struct =
                   ptype_cstrs = cl;
                   ptype_kind = tk;
                   ptype_private = tp;
+                  ptype_new = false;
                   ptype_manifest = tm;
                   ptype_loc = mkloc loc;
-                  ptype_variance = variance;
+                  ptype_variance = List.map (fun (a,b) -> (a,b,false)) variance;
                 }
               
             let mkprivate' m = if m then Private else Public
@@ -14630,9 +14631,10 @@ module Struct =
                       ptype_cstrs = [];
                       ptype_kind = kind;
                       ptype_private = priv;
+                      ptype_new = false;
                       ptype_manifest = Some ct;
                       ptype_loc = mkloc loc;
-                      ptype_variance = variance;
+                      ptype_variance = List.map (fun (a,b) -> (a,b,false)) variance;
                     }))
               
             let rec mkwithc wc acc =
@@ -15511,7 +15513,7 @@ module Struct =
                       pci_name = with_loc name nloc;
                       pci_expr = class_expr ce;
                       pci_loc = mkloc loc;
-                      pci_variance = variance;
+                      pci_variance = List.map (fun (a,b) -> (a,b,false)) variance;
                     }
               | ce -> error (loc_of_class_expr ce) "bad class definition"
             and class_info_class_type ci =
@@ -15534,7 +15536,7 @@ module Struct =
                       pci_name = with_loc name nloc;
                       pci_expr = class_type ct;
                       pci_loc = mkloc loc;
-                      pci_variance = variance;
+                      pci_variance = List.map (fun (a,b) -> (a,b,false)) variance;
                     }
               | ct ->
                   error (loc_of_class_type ct)

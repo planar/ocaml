@@ -321,8 +321,8 @@ module Make (Ast : Sig.Camlp4Ast) = struct
   value mktype loc tl cl tk tp tm =
     let (params, variance) = List.split tl in
     {ptype_params = params; ptype_cstrs = cl; ptype_kind = tk;
-     ptype_private = tp; ptype_manifest = tm; ptype_loc = mkloc loc;
-     ptype_variance = variance}
+     ptype_private = tp; ptype_new = False; ptype_manifest = tm; ptype_loc = mkloc loc;
+     ptype_variance = List.map (fun (a,b) -> (a,b,False)) variance}
   ;
   value mkprivate' m = if m then Private else Public;
   value mkprivate = fun
@@ -440,9 +440,10 @@ module Make (Ast : Sig.Camlp4Ast) = struct
     (id, pwith_type
       {ptype_params = params; ptype_cstrs = [];
         ptype_kind = kind;
+        ptype_new = False;
         ptype_private = priv;
         ptype_manifest = Some ct;
-        ptype_loc = mkloc loc; ptype_variance = variance});
+        ptype_loc = mkloc loc; ptype_variance = List.map (fun (a,b) -> (a,b,False)) variance});
 
   value rec mkwithc wc acc =
     match wc with
@@ -1118,7 +1119,7 @@ value varify_constructors var_names =
        pci_name = with_loc name nloc;
        pci_expr = class_expr ce;
        pci_loc = mkloc loc;
-       pci_variance = variance}
+       pci_variance = List.map (fun (a,b) -> (a,b,False)) variance}
     | ce -> error (loc_of_class_expr ce) "bad class definition" ]
   and class_info_class_type ci =
     match ci with
@@ -1134,7 +1135,7 @@ value varify_constructors var_names =
        pci_name = with_loc name nloc;
        pci_expr = class_type ct;
        pci_loc = mkloc loc;
-       pci_variance = variance}
+       pci_variance = List.map (fun (a,b) -> (a,b,False)) variance}
     | ct -> error (loc_of_class_type ct)
               "bad class/class type declaration/definition" ]
   and class_sig_item c l =

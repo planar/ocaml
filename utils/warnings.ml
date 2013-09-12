@@ -59,6 +59,7 @@ type t =
   | Unused_constructor of string * bool * bool  (* 37 *)
   | Unused_exception of string * bool       (* 38 *)
   | Unused_rec_flag                         (* 39 *)
+  | Injectivity of string * string * string(* 40 *)
 ;;
 
 (* If you remove a warning, leave a hole in the numbering.  NEVER change
@@ -107,9 +108,10 @@ let number = function
   | Unused_constructor _ -> 37
   | Unused_exception _ -> 38
   | Unused_rec_flag -> 39
+  | Injectivity _ -> 40
 ;;
 
-let last_warning_number = 39
+let last_warning_number = 40
 (* Must be the max number returned by the [number] function. *)
 
 let letter = function
@@ -205,7 +207,7 @@ let parse_options errflag s = parse_opt (if errflag then error else active) s;;
 
 (* If you change these, don't forget to change them in man/ocamlc.m *)
 let defaults_w = "+a-4-6-7-9-27-29-32..39";;
-let defaults_warn_error = "-a";;
+let defaults_warn_error = "-a+40";;
 
 let () = parse_options false defaults_w;;
 let () = parse_options true defaults_warn_error;;
@@ -304,6 +306,13 @@ let message = function
         (However, this constructor appears in patterns.)"
   | Unused_rec_flag ->
       "unused rec flag."
+  | Injectivity (name, loc1, loc2) ->
+      Printf.sprintf
+        "Injectivities do not match for %s.\n\
+         %s Actual Definition\n\
+         %s Expected Definition"
+        name loc1 loc2
+
 ;;
 
 let nerrors = ref 0;;

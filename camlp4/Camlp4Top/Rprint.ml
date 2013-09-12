@@ -300,7 +300,7 @@ and print_ty_label ppf lab =
   if lab <> "" then fprintf ppf "%s%s:" (if lab.[0] = '?' then "" else "~") lab else ()
 ;
 
-value type_parameter ppf (ty, (co, cn)) =
+value type_parameter ppf (ty, (co, cn, _)) =
   fprintf ppf "%s%s%s"
     (if not cn then "+" else if not co then "-" else "")
     (if ty = "_" then "" else "'")
