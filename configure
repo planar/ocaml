@@ -539,7 +539,7 @@ if test $withsharedlibs = "yes"; then
       mksharedlib="$flexlink"
       mkmaindll="$flexlink -maindll"
       shared_libraries_supported=true;;
-    *-*-linux-gnu|*-*-linux|*-*-freebsd[3-9]*|*-*-openbsd*|*-*-netbsd*|*-*-gnu*)
+    *-*-linux-gnu|*-*-linux|*-*-freebsd[3-9]*|*-*-freebsd[1-9][0-9]*|*-*-openbsd*|*-*-netbsd*|*-*-gnu*)
       sharedcccompopts="-fPIC"
       mksharedlib="$bytecc -shared"
       bytecclinkopts="$bytecclinkopts -Wl,-E"
@@ -690,6 +690,7 @@ case "$host" in
   i[3456]86-*-gnu*)             arch=i386; system=gnu;;
   powerpc*-*-linux*)            arch=power; model=ppc; system=elf;;
   powerpc-*-netbsd*)            arch=power; model=ppc; system=elf;;
+  powerpc-*-openbsd*)           arch=power; model=ppc; system=bsd_elf;;
   powerpc-*-rhapsody*)          arch=power; model=ppc; system=rhapsody;;
   powerpc-*-darwin*)            arch=power; system=rhapsody
                                 if $arch64; then model=ppc64; else model=ppc; fi;;
@@ -767,7 +768,7 @@ case "$arch,$model,$system" in
                     aspp='gcc -c';;
   power,*,elf)      as='as -u -m ppc'
                     aspp='gcc -c';;
-  power,*,bsd)      as='as'
+  power,*,bsd*)     as='as'
                     aspp='gcc -c';;
   power,*,rhapsody) as="as -arch $model"
                     aspp="$bytecc -c";;
@@ -1581,14 +1582,14 @@ else
 fi
 
 if test "$with_frame_pointers" = "true"; then
-  nativecccompopts="$nativecccompopts -g"
-  nativecclinkopts="$nativecclinkopts -g"
-  echo "#define WITH_FRAME_POINTERS" >> m.h
-
-  case "$cc" in
-    gcc*)
-      bytecccompopts="$bytecccompopts -fno-omit-frame-pointer"
-      nativecccompopts="$nativecccompopts -fno-omit-frame-pointer";;
+  case "$host,$cc" in
+    x86_64-*-linux*,gcc*)
+       nativecccompopts="$nativecccompopts -g  -fno-omit-frame-pointer"
+       bytecccompopts="$bytecccompopts -g  -fno-omit-frame-pointer"
+       nativecclinkopts="$nativecclinkopts -g"
+       echo "#define WITH_FRAME_POINTERS" >> m.h
+       ;;
+    *)  echo "Unsupported architecture with frame pointers" 1>&2; exit 2;;
   esac
 
 fi
