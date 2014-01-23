@@ -30,6 +30,7 @@ class mapper:
              class_type_declaration -> class_type_declaration
     method class_type_field: class_type_field -> class_type_field
     method exception_declaration: exception_declaration -> exception_declaration
+    method extension_constructor: extension_constructor -> extension_constructor
     method expr: expression -> expression
     method implementation: string -> structure -> string * structure
     method interface: string -> signature -> string * signature
@@ -43,6 +44,7 @@ class mapper:
     method structure_item: structure_item -> structure_item list
     method typ: core_type -> core_type
     method type_declaration: type_declaration -> type_declaration
+    method type_extension: type_extension -> type_extension
     method type_kind: type_kind -> type_kind
     method value_description: value_description -> value_description
     method with_constraint: with_constraint -> with_constraint
@@ -117,6 +119,9 @@ module T:
     val map: mapper -> core_type -> core_type
     val map_type_declaration: mapper -> type_declaration -> type_declaration
     val map_type_kind: mapper -> type_kind -> type_kind
+    val map_type_extension: mapper -> type_extension -> type_extension
+    val map_extension_constructor: 
+           mapper -> extension_constructor -> extension_constructor
   end
 
 module CT:
@@ -163,6 +168,7 @@ module MT:
     val type_:
           ?loc:Location.t -> (string loc * type_declaration) list ->
             signature_item
+    val extension_: ?loc:Location.t -> type_extension -> signature_item
     val exception_:
           ?loc:Location.t -> string loc -> exception_declaration ->
             signature_item
@@ -195,6 +201,7 @@ module M:
     val value: ?loc:Location.t -> rec_flag -> (pattern * expression) list -> structure_item
     val primitive: ?loc:Location.t -> string loc -> value_description -> structure_item
     val type_: ?loc:Location.t -> (string loc * type_declaration) list -> structure_item
+    val extension_: ?loc:Location.t -> type_extension -> structure_item
     val exception_: ?loc:Location.t -> string loc -> exception_declaration -> structure_item
     val exn_rebind: ?loc:Location.t -> string loc -> Longident.t loc -> structure_item
     val module_: ?loc:Location.t -> string loc -> module_expr -> structure_item
