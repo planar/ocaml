@@ -58,7 +58,8 @@ void caml_oldify_local_roots (void)
   if (caml_scan_roots_hook != NULL) (*caml_scan_roots_hook)(&caml_oldify_one);
 }
 
-/* Call [caml_darken] on all roots */
+/* Call [caml_darken] on all roots for the major heap. This includes the
+   contents of the minor heap, which is assumed to be clean. */
 
 void caml_darken_all_roots_start (void)
 {
@@ -90,20 +91,7 @@ void caml_do_roots (scanning_action f, int do_globals)
   caml_final_do_strong_roots (f);
   CAML_TIMER_TIME (tmr, "major_roots/finalised");
   /* Objects in the minor heap are roots for the major GC. */
-  {
-    value *hp;
-    asize_t sz, i;
-    for (hp = caml_young_ptr;
-         hp < caml_young_alloc_end;
-         hp += Whsize_wosize (sz)){
-      sz = Wosize_hp (hp);
-      if (Tag_hp (hp) < No_scan_tag){
-        for (i = 0; i < sz; i++){
-          f(Field(Val_hp(hp), i), &Field(Val_hp(hp), i));
-        }
-      }
-    }
-  }
+  caml_minor_do_fields (f);
   CAML_TIMER_TIME (tmr, "major_roots/minor_heap");
   /* Hook */
   if (caml_scan_roots_hook != NULL) (*caml_scan_roots_hook)(f);

@@ -309,6 +309,7 @@ CAMLprim value caml_gc_counters(value v)
   /* get a copy of these before allocating anything... */
   double minwords = caml_stat_minor_words
                     + (double) (caml_young_alloc_end - caml_young_ptr);
+>>>>>>> e0a7376... work in progress
   double prowords = caml_stat_promoted_words;
   double majwords = caml_stat_major_words + (double) caml_allocated_words;
 
@@ -418,8 +419,8 @@ CAMLprim value caml_gc_minor(value v)
 {
   CAML_TIMER_SETUP (tmr, "");
   Assert (v == Val_unit);
+  caml_empty_minor_heap ();
   caml_request_major_slice ();  /* FIXME do we want to do this ? */
-  caml_request_minor_gc ();
   caml_gc_dispatch ();
   CAML_TIMER_TIME (tmr, "explicit/gc_minor");
   return Val_unit;
@@ -446,7 +447,7 @@ CAMLprim value caml_gc_major(value v)
   CAML_TIMER_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x1, "Major GC cycle requested\n", 0);
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   test_and_compact ();
   caml_final_do_calls ();
@@ -459,10 +460,10 @@ CAMLprim value caml_gc_full_major(value v)
   CAML_TIMER_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x1, "Full major GC cycle requested\n", 0);
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   caml_final_do_calls ();
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   test_and_compact ();
   caml_final_do_calls ();
@@ -486,10 +487,10 @@ CAMLprim value caml_gc_compaction(value v)
   CAML_TIMER_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x10, "Heap compaction requested\n", 0);
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   caml_final_do_calls ();
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   caml_compact_heap ();
   caml_final_do_calls ();
@@ -515,7 +516,7 @@ void caml_init_gc (uintnat minor_size, uintnat major_size,
   if (caml_page_table_initialize(Bsize_wsize(minor_size) + major_heap_size)){
     caml_fatal_error ("OCaml runtime error: cannot initialize page table\n");
   }
-  caml_set_minor_heap_size (Bsize_wsize (norm_minsize (minor_size)));
+  caml_set_minor_heap_size (norm_minsize (minor_size));
   caml_major_heap_increment = major_incr;
   caml_percent_free = norm_pfree (percent_fr);
   caml_percent_max = norm_pmax (percent_m);

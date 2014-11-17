@@ -13,6 +13,9 @@
 
 /* Handling of finalised values. */
 
+/* XXX FIXME need to maintain one table for each young generation and copy only
+   the oldest one into the old set. */
+
 #include "callback.h"
 #include "fail.h"
 #include "mlvalues.h"
@@ -67,6 +70,7 @@ void caml_final_update (void)
   uintnat i, j, k;
   uintnat todo_count = 0;
 
+  return; /* XXX FIXME todo */
   Assert (young == old);
   for (i = 0; i < old; i++){
     Assert (Is_block (final_table[i].val));
@@ -122,6 +126,7 @@ void caml_final_do_calls (void)
   struct final f;
   value res;
 
+  return; /* XXX FIXME return */
   if (running_finalisation_function) return;
 
   if (to_do_hd != NULL){
@@ -201,14 +206,16 @@ void caml_final_do_young_roots (scanning_action f)
    This is called at the end of each minor collection.
    The minor heap must be empty when this is called.
 */
-void caml_final_empty_young (void)
+void caml_final_transfer_young (void)
 {
+  return; /* XXX FIXME adapt to multi-young */
   old = young;
 }
 
 /* Put (f,v) in the recent set. */
 CAMLprim value caml_final_register (value f, value v)
 {
+  Assert (0); return Val_unit; /* XXX FIXME adapt to multi-young */
   if (!(Is_block (v) && Is_in_heap_or_young(v))) {
     caml_invalid_argument ("Gc.finalise");
   }
@@ -244,6 +251,7 @@ CAMLprim value caml_final_register (value f, value v)
 
 CAMLprim value caml_final_release (value unit)
 {
+  Assert (0); return Val_unit; /* XXX FIXME adapt to multi-young */
   running_finalisation_function = 0;
   return Val_unit;
 }

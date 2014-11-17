@@ -16,7 +16,7 @@ RUNTIME=../boot/ocamlrun
 COMPILER=../ocamlc
 CAMLC=$(RUNTIME) $(COMPILER)
 COMPFLAGS=-strict-sequence -w +33..39 -g -warn-error A -bin-annot -nostdlib \
-          -safe-string
+          -safe-string -g
 OPTCOMPILER=../ocamlopt
 CAMLOPT=$(RUNTIME) $(OPTCOMPILER)
 CAMLDEP=../boot/ocamlrun ../tools/ocamldep

@@ -111,6 +111,8 @@ char *caml_aligned_malloc (asize_t, int, void **);
 #define Debug_tag(x) (0xD700D6D7ul | ((uintnat) (x) << 16))
 #endif /* ARCH_SIXTYFOUR */
 
+#define Debug_check(x) CAMLassert ((x) != Debug_tag (((x) >> 16) & 0xFF))
+
 /*
   00 -> free words in minor heap
   01 -> fields of free list blocks in major heap

@@ -186,6 +186,7 @@ CAMLprim value caml_make_vect(value len, value init)
     }
     else if (Is_block(init) && Is_young(init)) {
       CAML_TIMER_SETUP (tmr, "force_minor/make_vect");
+      caml_special_promote_value = init;
       caml_request_minor_gc ();
       caml_gc_dispatch ();
       res = caml_alloc_shr(size, 0);

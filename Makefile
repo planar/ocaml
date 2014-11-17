@@ -18,8 +18,8 @@ include stdlib/StdlibModules
 CAMLC=boot/ocamlrun boot/ocamlc -nostdlib -I boot
 CAMLOPT=boot/ocamlrun ./ocamlopt -nostdlib -I stdlib -I otherlibs/dynlink
 COMPFLAGS=-strict-sequence -w +33..39+48 -warn-error A -bin-annot \
-          -safe-string $(INCLUDES)
-LINKFLAGS=
+          -safe-string $(INCLUDES) -g
+LINKFLAGS=-g
 
 CAMLYACC=boot/ocamlyacc
 YACCFLAGS=-v
@@ -184,7 +184,7 @@ LIBFILES=stdlib.cma std_exit.cmo *.cmi camlheader
 # Start up the system from the distribution compiler
 coldstart:
 	cd byterun; $(MAKE) all
-	cp byterun/ocamlrun$(EXE) boot/ocamlrun$(EXE)
+	cp byterun/ocamlrund$(EXE) boot/ocamlrun$(EXE)
 	cd yacc; $(MAKE) all
 	cp yacc/ocamlyacc$(EXE) boot/ocamlyacc$(EXE)
 	cd stdlib; $(MAKE) COMPILER=../boot/ocamlc all

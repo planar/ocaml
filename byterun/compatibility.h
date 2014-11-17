@@ -229,7 +229,8 @@
 /* **** meta.c */
 
 /* **** minor_gc.c */
-#define young_start caml_young_start
+#define young_start_total caml_young_start_total
+#define young_start_first caml_young_start_first
 #define young_end caml_young_end
 #define young_ptr caml_young_ptr
 #define young_limit caml_young_limit

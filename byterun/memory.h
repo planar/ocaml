@@ -112,6 +112,7 @@ int caml_page_table_initialize(mlsize_t bytesize);
     caml_gc_dispatch ();                                                    \
     Restore_after_gc;                                                       \
     caml_young_ptr -= Whsize_wosize (wosize);                               \
+    Assert (caml_young_ptr >= caml_young_alloc_start);                      \
   }                                                                         \
   Hd_hp (caml_young_ptr) = Make_header ((wosize), (tag), Caml_black);       \
   (result) = Val_hp (caml_young_ptr);                                       \
