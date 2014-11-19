@@ -142,6 +142,8 @@ typedef uint64 uintnat;
 /* Default size of the minor zone. (words)  */
 #define Minor_heap_def 262144
 
+/* Default number of generations in the minor heap. */
+#define Minor_generations_def 1
 
 /* Minimum size increment when growing the heap (words).
    Must be a multiple of [Page_size / sizeof (value)]. */

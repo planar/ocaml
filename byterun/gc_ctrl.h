@@ -31,8 +31,9 @@ extern intnat
 
 uintnat caml_normalize_heap_increment (uintnat);
 
-void caml_init_gc (uintnat, uintnat, uintnat,
-                   uintnat, uintnat);
+void caml_init_gc (uintnat minor_size, uintnat minor_generations,
+                   uintnat major_size, uintnat major_incr,
+                   uintnat percent_fr, uintnat percent_m);
 
 
 #ifdef DEBUG

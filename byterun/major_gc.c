@@ -197,6 +197,8 @@ static void mark_slice (intnat work)
                 /* Do not short-circuit the pointer. */
               }else{
                 Field (v, i) = f;
+                if (Is_young (f))
+                  Add_to_ref_table (caml_ref_table, &Field (v, i));
               }
             }else if (Tag_hd(chd) == Infix_tag) {
               child -= Infix_offset_val(child);
@@ -305,11 +307,13 @@ static void mark_slice (intnat work)
                     /* Do not short-circuit the pointer. */
                   }else{
                     Field (cur, i) = curfield = f;
+                    if (Is_young (f))
+                      Add_to_ref_table (caml_weak_ref_table, &Field (cur, i));
                     goto weak_again;
                   }
                 }
               }
-              if (Is_white_val (curfield)){
+              if (Is_white_val (curfield) && !Is_young (curfield)){
                 Field (cur, i) = caml_weak_none;
               }
             }

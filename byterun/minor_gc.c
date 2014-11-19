@@ -337,8 +337,8 @@ void caml_oldify_mopup (void)
 void check_minor_value (value v, value *p)
 {
   if (Is_block (v) && Is_young (v)){
-    CAMLassert (Hd_val(v) != Debug_free_minor);
-    CAMLassert (Field(v, 0) != Debug_free_minor);
+    Debug_check (Hd_val(v));
+    Debug_check (Field(v, 0));
   }
 }
 #endif
@@ -352,7 +352,7 @@ static void clean_minor_heap (void)
   value **r, **q;
   uintnat prev_alloc_words;
 
-  if (caml_do_full_minor || caml_young_ptr != caml_young_alloc_end){
+  if (age_limit == 0 || caml_young_ptr != caml_young_alloc_end){
     CAML_TIMER_SETUP (tmr, "minor");
     caml_gc_message (0x02, "<", 0);
     prev_alloc_words = caml_allocated_words;
@@ -551,8 +551,8 @@ void caml_realloc_ref_table (struct caml_ref_table *tbl)
   }else{
     asize_t sz;
     asize_t cur_ptr = tbl->ptr - tbl->base;
-    CAMLassert (caml_requested_minor_gc);
 
+    caml_urge_major_slice ();
     tbl->size *= 2;
     sz = (tbl->size + tbl->reserve) * sizeof (value *);
     caml_gc_message (0x08, "Growing ref_table to %"

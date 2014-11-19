@@ -38,6 +38,7 @@ type control = {
   mutable max_overhead : int;
   mutable stack_limit : int;
   mutable allocation_policy : int;
+  mutable minor_generations : int;
 };;
 
 external stat : unit -> stat = "caml_gc_stat";;

@@ -146,7 +146,7 @@ void caml_oldify_local_roots (void)
   value * regs;
   frame_descr * d;
   uintnat h;
-  int i, j, n, ofs;
+  int i, j, n, ofs, globals_promoted;
 #ifdef Stack_grows_upwards
   short * p;  /* PR#4339: stack offsets are negative in this case */
 #else
@@ -158,15 +158,20 @@ void caml_oldify_local_roots (void)
   link *lnk;
 
   /* The global roots */
+  globals_promoted = caml_globals_inited;
   for (i = caml_globals_scanned;
        i <= caml_globals_inited && caml_globals[i] != 0;
        i++) {
     glob = caml_globals[i];
     for (j = 0; j < Wosize_val(glob); j++){
       Oldify (&Field (glob, j));
+      if (Is_block (Field (glob, j))
+          && Is_young (Field (glob, j))
+          && i < globals_promoted)
+        globals_promoted = i;
     }
   }
-  caml_globals_scanned = caml_globals_inited;
+  caml_globals_scanned = globals_promoted;
 
   /* Dynamic global roots */
   iter_list(caml_dyn_globals, lnk) {
@@ -328,21 +333,8 @@ void caml_do_roots (scanning_action f, int do_globals)
   /* Finalised values */
   caml_final_do_strong_roots (f);
   CAML_TIMER_TIME (tmr, "major_roots/finalised");
-  /* Objects in the minor heap are roots for the major GC. */
-  {
-    value *hp;
-    asize_t sz, i;
-    for (hp = caml_young_ptr;
-         hp < caml_young_alloc_end;
-         hp += Whsize_wosize (sz)){
-      sz = Wosize_hp (hp);
-      if (Tag_hp (hp) < No_scan_tag){
-        for (i = 0; i < sz; i++){
-          f(Field(Val_hp(hp), i), &Field(Val_hp(hp), i));
-        }
-      }
-    }
-  }
+  /* Pointers found in the minor heap. */
+  caml_minor_do_fields (f);
   CAML_TIMER_TIME (tmr, "major_roots/minor_heap");
   /* Hook */
   if (caml_scan_roots_hook != NULL) (*caml_scan_roots_hook)(f);

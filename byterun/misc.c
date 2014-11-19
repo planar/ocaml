@@ -50,6 +50,16 @@ void caml_gc_message (int level, char *msg, uintnat arg)
   }
 }
 
+#ifdef DEBUG
+
+int caml_debug_quiet = 0;
+
+void caml_gc_debug_message (int level, char *msg, uintnat arg)
+{
+  if (!caml_debug_quiet) caml_gc_message (level, msg, arg);
+}
+#endif
+
 CAMLexport void caml_fatal_error (char *msg)
 {
   fprintf (stderr, "%s", msg);

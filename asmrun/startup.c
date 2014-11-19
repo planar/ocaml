@@ -87,6 +87,7 @@ static void init_atoms(void)
 static uintnat percent_free_init = Percent_free_def;
 static uintnat max_percent_free_init = Max_percent_free_def;
 static uintnat minor_heap_init = Minor_heap_def;
+static uintnat minor_generations_init = Minor_generations_def;
 static uintnat heap_chunk_init = Heap_chunk_def;
 static uintnat heap_size_init = Init_heap_def;
 static uintnat max_stack_init = Max_stack_def;
@@ -118,25 +119,42 @@ static void parse_camlrunparam(void)
 {
   char *opt = getenv ("OCAMLRUNPARAM");
   uintnat p;
+#ifdef DEBUG
+  int caml_verb_gc_set = 0;
+#endif
 
   if (opt == NULL) opt = getenv ("CAMLRUNPARAM");
 
   if (opt != NULL){
     while (*opt != '\0'){
       switch (*opt++){
+      case 'g': scanmult (opt, &minor_generations_init); break;
       case 's': scanmult (opt, &minor_heap_init); break;
       case 'i': scanmult (opt, &heap_chunk_init); break;
       case 'h': scanmult (opt, &heap_size_init); break;
       case 'l': scanmult (opt, &max_stack_init); break;
       case 'o': scanmult (opt, &percent_free_init); break;
       case 'O': scanmult (opt, &max_percent_free_init); break;
-      case 'v': scanmult (opt, &caml_verb_gc); break;
+      case 'v':
+        scanmult (opt, &caml_verb_gc);
+#ifdef DEBUG
+        caml_verb_gc_set = 1;
+#endif
+        break;
       case 'b': caml_record_backtrace(Val_true); break;
       case 'p': caml_parser_trace = 1; break;
       case 'a': scanmult (opt, &p); caml_set_allocation_policy (p); break;
+#ifdef DEBUG
+      case 'q': caml_debug_quiet = 1; break;
+#endif
       }
     }
   }
+#ifdef DEBUG
+  if (!caml_verb_gc_set && !caml_debug_quiet)
+    caml_verb_gc = 0x001 + 0x002 + 0x004 + 0x008 + 0x010 + 0x020;
+  caml_gc_debug_message (-1, "### OCaml runtime: debug mode ###\n", 0);
+#endif
 }
 
 /* These are termination hooks used by the systhreads library */
@@ -167,12 +185,10 @@ void caml_main(char **argv)
   caml_install_invalid_parameter_handler();
 #endif
   caml_init_custom_operations();
-#ifdef DEBUG
-  caml_verb_gc = 63;
-#endif
   caml_top_of_stack = &tos;
   parse_camlrunparam();
-  caml_init_gc (minor_heap_init, heap_size_init, heap_chunk_init,
+  caml_init_gc (minor_heap_init, minor_generations_init,
+                heap_size_init, heap_chunk_init,
                 percent_free_init, max_percent_free_init);
   init_atoms();
   caml_init_signals();

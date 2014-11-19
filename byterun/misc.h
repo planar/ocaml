@@ -97,6 +97,10 @@ extern void caml_ext_table_free(struct ext_table * tbl, int free_entries);
 
 extern uintnat caml_verb_gc;
 void caml_gc_message (int, char *, uintnat);
+#ifdef DEBUG
+extern int caml_debug_quiet;
+void caml_gc_debug_message (int, char *, uintnat);
+#endif
 
 /* Memory routines */
 

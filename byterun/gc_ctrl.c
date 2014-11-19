@@ -135,7 +135,7 @@ static value heap_stats (int returnstats)
   header_t cur_hd;
 
 #ifdef DEBUG
-  caml_gc_message (-1, "### OCaml runtime: heap check ###\n", 0);
+  caml_gc_debug_message (-1, "### OCaml runtime: heap check ###\n", 0);
 #endif
 
   while (chunk != NULL){
@@ -354,9 +354,16 @@ static uintnat norm_pmax (uintnat p)
 
 static intnat norm_minsize (intnat s)
 {
+  if (s & 1) ++ s;
   if (s < Minor_heap_min) s = Minor_heap_min;
   if (s > Minor_heap_max) s = Minor_heap_max;
   return s;
+}
+
+static intnat norm_generations (intnat g)
+{
+  if (g < 1) g = 1;
+  return g;
 }
 
 CAMLprim value caml_gc_set(value v)
@@ -403,13 +410,14 @@ CAMLprim value caml_gc_set(value v)
                      caml_allocation_policy);
   }
 
-    /* Minor heap size comes last because it will trigger a minor collection
-       (thus invalidating [v]) and it can raise [Out_of_memory]. */
+  /* Minor heap size comes last because it will trigger a minor collection
+     (thus invalidating [v]) and it can raise [Out_of_memory]. */
   newminwsz = norm_minsize (Long_val (Field (v, 0)));
   if (newminwsz != caml_minor_heap_wsz){
     caml_gc_message (0x20, "New minor heap size: %luk words\n",
                      newminwsz/1024);
-    caml_set_minor_heap_size (newminwsz);
+    caml_set_minor_heap_size (newminwsz, newminwsz * 4);
+    /* FIXME TODO user-settable size for aging area. */
   }
   CAML_TIMER_TIME (tmr, "explicit/gc_set");
   return Val_unit;
@@ -506,9 +514,9 @@ uintnat caml_normalize_heap_increment (uintnat i)
   return ((i + Page_size - 1) >> Page_log) << Page_log;
 }
 
-void caml_init_gc (uintnat minor_size, uintnat major_size,
-                   uintnat major_incr, uintnat percent_fr,
-                   uintnat percent_m)
+void caml_init_gc (uintnat minor_size, uintnat aging_size,
+                   uintnat major_size, uintnat major_incr,
+                   uintnat percent_fr, uintnat percent_m)
 {
   uintnat major_heap_size =
     Bsize_wsize (caml_normalize_heap_increment (major_size));
@@ -516,7 +524,8 @@ void caml_init_gc (uintnat minor_size, uintnat major_size,
   if (caml_page_table_initialize(Bsize_wsize(minor_size) + major_heap_size)){
     caml_fatal_error ("OCaml runtime error: cannot initialize page table\n");
   }
-  caml_set_minor_heap_size (norm_minsize (minor_size));
+  caml_set_minor_heap_size (norm_minsize (minor_size),
+                            norm_agingsize(aging_size));
   caml_major_heap_increment = major_incr;
   caml_percent_free = norm_pfree (percent_fr);
   caml_percent_max = norm_pmax (percent_m);

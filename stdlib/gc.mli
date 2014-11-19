@@ -140,6 +140,12 @@ type control =
         first-fit policy, which can be slower in some cases but
         can be better for programs with fragmentation problems.
         Default: 0. @since 3.11.0 *)
+
+    mutable minor_generations : int;
+    (** The number of generations in the minor collector. This is the
+        number of minor GC cycles that a value must survive before it
+        is promoted to the major heap. Default: 1.
+        @since 4.03.0 *)
 }
 (** The GC parameters are given as a [control] record.  Note that
     these parameters can also be initialised by setting the
@@ -251,6 +257,11 @@ val finalise : ('a -> unit) -> 'a -> unit
    stored into arrays, so they can be finalised and collected while
    another copy is still in use by the program.
 
+   You should not call [finalise] on lazy values. [finalize] will also
+   raise [Invalid_argument] if it detects that its argument is a lazy
+   value. Note that optimization of lazy values by the GC makes it
+   impossible to guarantee that [finalise] will always detect when [v]
+   is a lazy value.
 
    The results of calling {!String.make}, {!Bytes.make}, {!Bytes.create},
    {!Array.make}, and {!Pervasives.ref} are guaranteed to be

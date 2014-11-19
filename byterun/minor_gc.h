@@ -42,7 +42,7 @@ struct caml_ref_table {
 };
 CAMLextern struct caml_ref_table caml_ref_table, caml_weak_ref_table;
 
-#define ADD_TO_REF_TABLE(tbl, p)                  \
+#define Add_to_ref_table(tbl, p)                  \
   do {                                            \
     if ((tbl).ptr >= (tbl).limit){                \
       Assert ((tbl).ptr == (tbl).limit);          \
@@ -55,7 +55,7 @@ CAMLextern struct caml_ref_table caml_ref_table, caml_weak_ref_table;
   (Assert (Is_block (val)), \
    (addr)(val) < (addr)caml_young_end && (addr)(val) > (addr)caml_young_start_total)
 
-extern void caml_set_minor_heap_size (asize_t); /* size in bytes */
+extern void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_wsz);
 CAMLextern void caml_minor_collection_clean (void);
 CAMLextern void caml_minor_collection_empty (void);
 CAMLextern void caml_gc_dispatch (void);

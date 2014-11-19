@@ -146,6 +146,8 @@ static void do_compaction (void)
 {
   char *ch, *chend;
                                           Assert (caml_gc_phase == Phase_idle);
+                        CAMLassert (caml_ref_table.ptr == caml_ref_table.base);
+
   caml_gc_message (0x10, "Compacting heap...\n", 0);
 
 #ifdef DEBUG
@@ -505,6 +507,7 @@ void caml_compact_heap_maybe (void)
                             ARCH_INTNAT_PRINTF_FORMAT "u%%\n",
                      (uintnat) fp);
 
+    caml_minor_collection_empty ();
     caml_compact_heap ();
   }
 }
