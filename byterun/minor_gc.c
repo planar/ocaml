@@ -338,7 +338,7 @@ void check_minor_value (value v, value *p)
 {
   if (Is_block (v) && Is_young (v)){
     Debug_check (Hd_val(v));
-    Debug_check (Field(v, 0));
+    if (Tag_val (v) < No_scan_tag) Debug_check (Field(v, 0));
   }
 }
 #endif
