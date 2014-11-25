@@ -136,6 +136,7 @@ CAMLprim value caml_obj_truncate (value v, value newsize)
   color_t color = Color_hd (hd);
   mlsize_t wosize = Wosize_hd (hd);
   mlsize_t i;
+  value *new_hp;
 
   if (tag == Double_array_tag) new_wosize *= Double_wosize;  /* PR#156 */
 
@@ -149,16 +150,18 @@ CAMLprim value caml_obj_truncate (value v, value newsize)
   if (tag < No_scan_tag) {
     for (i = new_wosize; i < wosize; i++){
       caml_modify(&Field(v, i), Val_unit);
-#ifdef DEBUG
-      Field (v, i) = Debug_free_truncate;
-#endif
     }
   }
   /* We must use an odd tag for the header of the leftovers so it does not
      look like a pointer because there may be some references to it in
-     ref_table. */
-  Field (v, new_wosize) =
-    Make_header (Wosize_whsize (wosize-new_wosize), 1, Caml_white);
+     [caml_ref_table].
+     We also use a high tag (>= No_scan_tag) to avoid problems with the
+     heap-checking code in debug mode. */
+  /* We must also mark it with the allocation color (instead of white)
+     for the same reason, see [caml_minor_marking_counter]. */
+  new_hp = &Field (v, new_wosize);
+  *new_hp = Make_header (Wosize_whsize (wosize-new_wosize), Abstract_tag,
+                         caml_allocation_color (new_hp));
   Hd_val (v) = Make_header (new_wosize, tag, color);
   return Val_unit;
 }

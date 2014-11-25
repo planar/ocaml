@@ -105,7 +105,21 @@ int caml_in_minor_collection = 0;
 #ifdef DEBUG
 static unsigned long minor_gc_counter = 0;
 extern uintnat caml_global_event_count;  /* defined in debugger.c */
-#endif
+
+int caml_check_minor_heap_empty (void)
+{
+  uintnat g;
+
+  CAMLassert (caml_young_ptr == caml_young_end);
+  for (g = 0; g < caml_minor_generations - 1; g++){
+    CAMLassert (young_alloc[g] == YOUNG_BASE (g) + young_shift);
+  }
+  CAMLassert (caml_ref_table.ptr == caml_ref_table.base);
+  CAMLassert (caml_weak_ref_table.ptr == caml_weak_ref_table.base);
+  return 1;
+}
+
+#endif /* DEBUG */
 
 void caml_alloc_table (struct caml_ref_table *tbl, asize_t sz, asize_t rsv)
 {
@@ -227,6 +241,8 @@ void caml_oldify_one (value v, value *p)
   mlsize_t sz, i;
   tag_t tag;
 
+  CAMLassert (oldify_todo_list == 0
+              || (Is_young (oldify_todo_list) && Hd_val (oldify_todo_list) == 0));
  tail_call:
   if (Is_block (v) && Is_young (v) && Is_in_from_space (v)){
     Assert ((value *) Hp_val (v) >= caml_young_ptr);
@@ -301,6 +317,8 @@ void caml_oldify_one (value v, value *p)
   }else{
     *p = v;
   }
+  CAMLassert (oldify_todo_list == 0
+              || (Is_young (oldify_todo_list) && Hd_val (oldify_todo_list) == 0));
 }
 
 /* Finish the work that was put off by [caml_oldify_one].
@@ -311,6 +329,9 @@ void caml_oldify_mopup (void)
 {
   value v, new_v, f;
   mlsize_t i;
+
+  CAMLassert (oldify_todo_list == 0
+              || (Is_young (oldify_todo_list) && Hd_val (oldify_todo_list) == 0));
 
   while (oldify_todo_list != 0){
     v = oldify_todo_list;                /* Get the head. */
@@ -352,6 +373,7 @@ static void clean_minor_heap (void)
   value **r, **q;
   uintnat prev_alloc_words;
 
+  CAMLassert (oldify_todo_list == 0);
   if (age_limit == 0 || caml_young_ptr != caml_young_alloc_end){
     CAML_TIMER_SETUP (tmr, "minor");
     caml_gc_message (0x02, "<", 0);
@@ -366,12 +388,19 @@ static void clean_minor_heap (void)
     caml_oldify_local_roots();
     CAML_TIMER_TIME (tmr, "minor/local_roots");
     for (q = r = caml_ref_table.base; r < caml_ref_table.ptr; r++){
+#ifdef DEBUG
+      Debug_check (**r);
+#endif
       caml_oldify_one (**r, *r);
       if (Is_block (**r) && Is_young (**r)){
         *q++ = *r;
       }
     }
     caml_ref_table.ptr = q;
+#ifdef DEBUG
+    for (r = caml_ref_table.ptr; r < caml_ref_table.end; r++)
+      *r = (value *) Debug_ref_tables;
+#endif
     if (caml_ref_table.ptr < caml_ref_table.threshold){
       caml_ref_table.limit = caml_ref_table.threshold;
     }
@@ -417,6 +446,9 @@ static void clean_minor_heap (void)
     }
     CAML_TIMER_TIME (tmr, "minor/update_ref_table");
     for (q = r = caml_weak_ref_table.base; r < caml_weak_ref_table.ptr; r++){
+#ifdef DEBUG
+      Debug_check (**r);
+#endif
       if (Is_block (**r) && Is_young (**r)){
         if (Hd_val (**r) == 0){
           **r = Field (**r, 0);
@@ -429,6 +461,10 @@ static void clean_minor_heap (void)
       }
     }
     caml_weak_ref_table.ptr = q;
+#ifdef DEBUG
+    for (r = caml_weak_ref_table.ptr; r < caml_weak_ref_table.end; r++)
+      *r = (value *) Debug_ref_tables;
+#endif
     if (caml_weak_ref_table.ptr < caml_weak_ref_table.threshold){
       caml_weak_ref_table.limit = caml_weak_ref_table.threshold;
     }
@@ -442,8 +478,14 @@ static void clean_minor_heap (void)
     CAML_TIMER_TIME (tmr, "minor/finalized");
     caml_stat_promoted_words += caml_allocated_words - prev_alloc_words;
     ++ caml_stat_minor_collections;
+    if (caml_do_full_minor){
+      caml_minor_marking_counter = 0;
+    }else{
+      if (caml_minor_marking_counter > 0) --caml_minor_marking_counter;
+    }
   }
 #ifdef DEBUG
+  CAMLassert (oldify_todo_list == 0);
   {
     value *p;
     for (p = caml_young_alloc_start; p < caml_young_alloc_end; ++p){

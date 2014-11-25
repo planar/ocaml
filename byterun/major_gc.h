@@ -49,6 +49,7 @@ extern uintnat caml_fl_size_at_phase_change;
 CAMLextern char *caml_heap_start;
 extern uintnat total_heap_size;
 extern char *caml_gc_sweep_hp;
+extern uintnat caml_minor_marking_counter;
 
 void caml_init_major_heap (asize_t);           /* size in bytes */
 asize_t caml_round_heap_chunk_size (asize_t);  /* size in bytes */

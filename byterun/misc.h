@@ -125,6 +125,7 @@ char *caml_aligned_malloc (asize_t, int, void **);
   10 -> uninitialised fields of minor objects
   11 -> uninitialised fields of major objects
   15 -> uninitialised words of [caml_aligned_malloc] blocks
+  20 -> unused entries in [ref_table]s
   85 -> filler bytes of [caml_aligned_malloc]
 
   special case (byte by byte):
@@ -137,6 +138,7 @@ char *caml_aligned_malloc (asize_t, int, void **);
 #define Debug_uninit_minor   Debug_tag (0x10)
 #define Debug_uninit_major   Debug_tag (0x11)
 #define Debug_uninit_align   Debug_tag (0x15)
+#define Debug_ref_tables     Debug_tag (0x20)
 #define Debug_filler_align   Debug_tag (0x85)
 
 #define Debug_uninit_stat    0xD7
