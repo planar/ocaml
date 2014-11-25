@@ -106,19 +106,6 @@ int caml_in_minor_collection = 0;
 static unsigned long minor_gc_counter = 0;
 extern uintnat caml_global_event_count;  /* defined in debugger.c */
 
-int caml_check_minor_heap_empty (void)
-{
-  uintnat g;
-
-  CAMLassert (caml_young_ptr == caml_young_end);
-  for (g = 0; g < caml_minor_generations - 1; g++){
-    CAMLassert (young_alloc[g] == YOUNG_BASE (g) + young_shift);
-  }
-  CAMLassert (caml_ref_table.ptr == caml_ref_table.base);
-  CAMLassert (caml_weak_ref_table.ptr == caml_weak_ref_table.base);
-  return 1;
-}
-
 #endif /* DEBUG */
 
 void caml_alloc_table (struct caml_ref_table *tbl, asize_t sz, asize_t rsv)

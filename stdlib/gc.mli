@@ -144,7 +144,9 @@ type control =
     mutable minor_generations : int;
     (** The number of generations in the minor collector. This is the
         number of minor GC cycles that a value must survive before it
-        is promoted to the major heap. Default: 1.
+        is promoted to the major heap. Default: 1. Note that the
+        total amount of memory reserved for the minor heap is
+        [minor_heap_size] * (2 * [minor_generations] - 1).
         @since 4.03.0 *)
 }
 (** The GC parameters are given as a [control] record.  Note that

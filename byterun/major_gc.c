@@ -34,7 +34,17 @@
 #endif
 
 #ifdef DEBUG
-extern int caml_check_minor_heap_empty (void); /* from minor_gc.c */
+
+#include "minor_gc.h"
+int caml_check_minor_heap_empty (void)
+{
+  uintnat g;
+
+  CAMLassert (caml_young_ptr == caml_young_end);
+  CAMLassert (caml_ref_table.ptr == caml_ref_table.base);
+  CAMLassert (caml_weak_ref_table.ptr == caml_weak_ref_table.base);
+  return 1;
+}
 #endif
 
 uintnat caml_percent_free;
@@ -215,7 +225,7 @@ static void mark_slice (intnat work)
                 /* Do not short-circuit the pointer. */
               }else{
                 Field (v, i) = f;
-                if (Is_young (f))
+                if (Is_block (f) && Is_young (f))
                   Add_to_ref_table (caml_ref_table, &Field (v, i));
               }
             }else if (Tag_hd(chd) == Infix_tag) {
@@ -316,7 +326,7 @@ static void mark_slice (intnat work)
             curfield = Field (cur, i);
           weak_again:
             if (curfield != caml_weak_none
-                && Is_block (curfield) && Is_in_heap (curfield)){
+                && Is_block (curfield) && Is_in_heap_or_young (curfield)){
               if (Tag_val (curfield) == Forward_tag){
                 value f = Forward_val (curfield);
                 if (Is_block (f)) {
@@ -325,7 +335,7 @@ static void mark_slice (intnat work)
                     /* Do not short-circuit the pointer. */
                   }else{
                     Field (cur, i) = curfield = f;
-                    if (Is_young (f))
+                    if (Is_block (f) && Is_young (f))
                       Add_to_ref_table (caml_weak_ref_table, &Field (cur, i));
                     goto weak_again;
                   }

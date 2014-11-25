@@ -149,6 +149,10 @@ avoiding fragmentation and the associated heap compactions.
 .BR s \ (minor_heap_size)
 The size of the minor heap (in words).
 .TP
+.BR g \ (minor_generations)
+The number of generations in the minor heap. The default is 1. Note
+that the total size reserved for the minor heap is s*(2*g-1).
+.TP
 .BR i \ (major_heap_increment)
 The default size increment for the major heap (in words).
 .TP
