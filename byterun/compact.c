@@ -435,6 +435,10 @@ void caml_compact_heap (void)
   target_words = live + caml_percent_free * (live / 100 + 1)
                  + Wsize_bsize (Page_size);
   target_size = caml_round_heap_chunk_size (Bsize_wsize (target_words));
+  caml_gc_message (0x200, "Recompaction test: target=%luk",
+                   target_size / 1024);
+  caml_gc_message (0x200, " heap_size/2=%luk\n",
+                   caml_stat_heap_size / 2 / 1024);
   if (target_size < caml_stat_heap_size / 2){
     char *chunk;
 
@@ -478,8 +482,10 @@ void caml_compact_heap_maybe (void)
   */
   float fw, fp;
                                           Assert (caml_gc_phase == Phase_idle);
-  if (caml_percent_max >= 1000000) return;
-  if (caml_stat_major_collections < 3) return;
+  if (caml_percent_max >= 1000000
+      || caml_stat_major_collections < 3
+      || caml_stat_heap_size <= Bsize_wsize (Heap_chunk_min))
+    return;
 
   fw = 3.0 * caml_fl_cur_size - 2.0 * caml_fl_size_at_phase_change;
   if (fw < 0) fw = caml_fl_cur_size;
