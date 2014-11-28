@@ -417,7 +417,7 @@ CAMLprim value caml_gc_set(value v)
     caml_gc_message (0x20, "New minor heap size: %luk words\n",
                      newminwsz/1024);
     caml_set_minor_heap_size (newminwsz, newminwsz * 4);
-    /* FIXME TODO user-settable size for aging area. */
+    todo ("user-settable size for aging area");
   }
   CAML_TIMER_TIME (tmr, "explicit/gc_set");
   return Val_unit;

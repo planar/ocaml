@@ -140,8 +140,9 @@ type control =
         first-fit policy, which can be slower in some cases but
         can be better for programs with fragmentation problems.
         Default: 0. @since 3.11.0 *)
-
+(*
     mutable minor_generations : int;
+*)
     (** The number of generations in the minor collector. This is the
         number of minor GC cycles that a value must survive before it
         is promoted to the major heap. Default: 1. Note that the
