@@ -107,12 +107,22 @@ void caml_gc_debug_message (int, char *, uintnat);
 char *caml_aligned_malloc (asize_t, int, void **);
 
 #ifdef DEBUG
+/* Debug macros used to overwrite deallocated memory.
+   Used to speed up detection of dangling pointers. */
+
+/* This variable can be set through an environment variable.
+   Setting it odd or even will help detect different kinds of bugs. */
+extern int ocaml_debug_low_byte;
+
 #ifdef ARCH_SIXTYFOUR
-#define Debug_tag(x) (0xD700D7D7D700D6D7ul \
+#define Debug_tag(x) (0xD700D7D7D700D600ul    \
+                      | ocaml_debug_low_byte  \
                       | ((uintnat) (x) << 16) \
                       | ((uintnat) (x) << 48))
 #else
-#define Debug_tag(x) (0xD700D6D7ul | ((uintnat) (x) << 16))
+#define Debug_tag(x) (0xD700D600ul            \
+                      | ocaml_debug_low_byte  \
+                      | ((uintnat) (x) << 16))
 #endif /* ARCH_SIXTYFOUR */
 
 #define Debug_check(x) CAMLassert ((x) != Debug_tag (((x) >> 16) & 0xFF))

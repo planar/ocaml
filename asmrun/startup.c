@@ -151,9 +151,14 @@ static void parse_camlrunparam(void)
     }
   }
 #ifdef DEBUG
-  if (!caml_verb_gc_set && !caml_debug_quiet)
-    caml_verb_gc = 0x001 + 0x002 + 0x004 + 0x008 + 0x010 + 0x020;
-  caml_gc_debug_message (-1, "### OCaml runtime: debug mode ###\n", 0);
+  {
+    char *v = getenv ("OCAMLDEBUGVAL");
+    if (v != NULL) sscanf (v, "%x", &ocaml_debug_low_byte);
+
+    if (!caml_verb_gc_set && !caml_debug_quiet)
+      caml_verb_gc = 0x001 + 0x002 + 0x004 + 0x008 + 0x010 + 0x020;
+    caml_gc_debug_message (-1, "### OCaml runtime: debug mode ###\n", 0);
+  }
 #endif
 }
 

@@ -21,6 +21,8 @@
 
 #ifdef DEBUG
 
+int ocaml_debug_low_byte = 0xD8;
+
 int caml_failed_assert (char * expr, char * file, int line)
 {
   fprintf (stderr, "file %s; line %d ### Assertion failed: %s\n",
