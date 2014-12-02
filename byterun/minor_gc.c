@@ -147,8 +147,7 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, int aging_wsz)
 
   if (caml_young_ptr != caml_young_alloc_end){
     CAML_TIMER_SETUP (tmr, "force_minor/set_minor_heap_size");
-    caml_empty_minor_heap ();
-    caml_requested_minor_gc = 0;
+    caml_minor_collection_empty ();
     caml_young_trigger = caml_young_alloc_start + caml_minor_heap_wsz / 2;
     caml_young_limit = caml_young_trigger;
   }
@@ -177,9 +176,6 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, int aging_wsz)
   caml_young_aging_end = caml_young_end;
   CAMLassert (caml_young_aging_end == caml_young_aging_start + aging_wsz);
   caml_minor_heap_wsz = alloc_wsz;
-
-  caml_minor_generations = generations;
-  young_shift = 0;
 
   reset_table (&caml_ref_table);
   reset_table (&caml_weak_ref_table);
