@@ -105,7 +105,6 @@ int caml_in_minor_collection = 0;
 #ifdef DEBUG
 static unsigned long minor_gc_counter = 0;
 extern uintnat caml_global_event_count;  /* defined in debugger.c */
-
 #endif /* DEBUG */
 
 void caml_alloc_table (struct caml_ref_table *tbl, asize_t sz, asize_t rsv)
@@ -212,6 +211,13 @@ static value alloc_next_gen (asize_t wosz, tag_t tag, value v)
 
 static value oldify_todo_list = 0;
 int caml_do_full_minor = 0;
+
+/* Note how this computation would be nicer with a different layout of the
+   intermediate heaps. */
+#define Is_in_from_space(v)                                             \
+  ((value *) (v) >= caml_young_start_first                              \
+   || (((((value *) (v) - caml_young_start_total) / caml_minor_heap_size) & 1) \
+       == (young_shift != caml_minor_heap_size)))
 
 /* Note that the tests on the tag depend on the fact that Infix_tag,
    Forward_tag, and No_scan_tag are contiguous.
@@ -380,6 +386,7 @@ static void clean_minor_heap (void)
       }
     }
     caml_ref_table.ptr = q;
+
 #ifdef DEBUG
     for (r = caml_ref_table.ptr; r < caml_ref_table.end; r++)
       *r = (value *) Debug_ref_tables;
@@ -432,10 +439,11 @@ static void clean_minor_heap (void)
 #ifdef DEBUG
       Debug_check (**r);
 #endif
-      if (Is_block (**r) && Is_young (**r)){
+      if (Is_block (**r) && Is_young (**r) && Is_in_from_space (**r)){
         if (Hd_val (**r) == 0){
           **r = Field (**r, 0);
           if (Is_block (**r) && Is_young (**r)){
+            CAMLassert (!Is_in_from_space (**r));
             *q++ = *r;
           }
         }else{
@@ -466,7 +474,10 @@ static void clean_minor_heap (void)
     }else{
       if (caml_minor_marking_counter > 0) --caml_minor_marking_counter;
     }
+    caml_final_transfer_young ();
+    ++ caml_stat_minor_collections;
   }
+
 #ifdef DEBUG
   CAMLassert (oldify_todo_list == 0);
   {
