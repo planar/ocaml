@@ -237,6 +237,8 @@
 #define ref_table caml_ref_table
 #define minor_collection caml_minor_collection
 #define check_urgent_gc caml_check_urgent_gc
+/* [young_start] See compatibility at the end of memory.h */
+#define young_start caml_young_start
 
 /* **** misc.c */
 
