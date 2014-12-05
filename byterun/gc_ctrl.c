@@ -481,13 +481,12 @@ CAMLprim value caml_gc_full_major(value v)
 
 CAMLprim value caml_gc_major_slice (value v)
 {
-  intnat result;
   CAML_TIMER_SETUP (tmr, "");
   Assert (Is_long (v));
-  caml_empty_minor_heap ();
-  result = caml_major_collection_slice (Long_val (v));
+  caml_request_major_slice ();
+  caml_gc_dispatch ();
   CAML_TIMER_TIME (tmr, "explicit/gc_major_slice");
-  return Val_long (result);
+  return Val_long (0);  /* FIXME TODO return current slice credit. */
 }
 
 CAMLprim value caml_gc_compaction(value v)

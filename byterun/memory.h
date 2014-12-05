@@ -445,7 +445,7 @@ CAMLextern void caml_modify_generational_global_root(value *r, value newval);
 
 /* These are provided for compatibility with legacy code (lablgtk) */
 #define caml_young_start caml_young_start_total
-#define caml_minor_collection caml_minor_collection_clean
+#define caml_minor_collection caml_minor_collection_empty
   
 #ifdef __cplusplus
 }
