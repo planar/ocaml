@@ -59,6 +59,7 @@ uintnat caml_allocated_words;
 uintnat caml_dependent_size, caml_dependent_allocated;
 double caml_extra_heap_resources;
 uintnat caml_fl_size_at_phase_change = 0;
+uintnat caml_major_slice_credit = 0;
 
 extern char *caml_fl_merge;  /* Defined in freelist.c. */
 
@@ -471,9 +472,8 @@ static char *mark_slice_name[] = {
 
 /* The main entry point for the GC.  Called after each minor GC.
    [howmuch] is the amount of work to do, 0 to let the GC compute it.
-   Return the computed amount of work to do.
  */
-intnat caml_major_collection_slice (intnat howmuch)
+void caml_major_collection_slice (intnat howmuch)
 {
   double p, dp;
   intnat computed_work;
@@ -560,6 +560,15 @@ intnat caml_major_collection_slice (intnat howmuch)
   }else{
     computed_work = (intnat) (p * Wsize_bsize (caml_stat_heap_size) * 5 / 3);
   }
+
+  if (caml_major_slice_credit > computed_work){
+    computed_work = 0;
+    caml_major_slice_credit -= computed_work;
+  }else{
+    /* Note [caml_major_slice_credit] may be negative. */
+    computed_work -= caml_major_slice_credit;
+    caml_major_slice_credit = 0;
+  }
   caml_gc_message (0x40, "ordered work = %ld words\n", howmuch);
   caml_gc_message (0x40, "computed work = %ld words\n", computed_work);
   if (howmuch == 0) howmuch = computed_work;
@@ -590,7 +599,6 @@ intnat caml_major_collection_slice (intnat howmuch)
   caml_allocated_words = 0;
   caml_dependent_allocated = 0;
   caml_extra_heap_resources = 0.0;
-  return computed_work;
 }
 
 /* This does not call [caml_compact_heap_maybe] because the estimations of
@@ -607,6 +615,7 @@ void caml_finish_major_cycle (void)
   Assert (caml_gc_phase == Phase_idle);
   caml_stat_major_words += caml_allocated_words;
   caml_allocated_words = 0;
+  caml_major_slice_credit = 0;
 }
 
 /* Make sure the request is at least Heap_chunk_min and round it up

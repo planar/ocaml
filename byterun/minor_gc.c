@@ -476,6 +476,7 @@ static void clean_minor_heap (void)
     }
     caml_final_transfer_young ();
     ++ caml_stat_minor_collections;
+    caml_stat_promoted_words += caml_allocated_words - prev_alloc_words;
   }
 
 #ifdef DEBUG
@@ -498,7 +499,7 @@ static void clean_minor_heap (void)
    age of every minor block, promotes the ones that are over the age limit.
    Also promotes caml_special_promote_value, whatever its age might be.
 */
-CAMLexport void caml_minor_collection_clean (void)
+CAMLexport void caml_minor_collection_clean (uintnat slice_size)
 {
   todo ("set age_limit depending on available size and caml_young_age_limit");
   clean_minor_heap ();

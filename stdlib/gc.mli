@@ -181,9 +181,13 @@ external minor : unit -> unit = "caml_gc_minor"
 (** Trigger a minor collection. *)
 
 external major_slice : int -> int = "caml_gc_major_slice";;
-(** Do a minor collection and a slice of major collection.  The argument
-    is the size of the slice, 0 to use the automatically-computed
-    slice size.  In all cases, the result is the computed slice size. *)
+(** [major_slice size] does a minor collection and a slice of major
+    collection. [size] is the amount of work done by this slice.
+    The GC computes how much work it should have done and records the
+    cumulative difference in an internal counter, which is used to
+    adjust the size of subsequent slices.
+    @return the contents of the internal counter.
+*)
 
 external major : unit -> unit = "caml_gc_major"
 (** Do a minor collection and finish the current major collection cycle. *)
@@ -205,6 +209,11 @@ val allocated_bytes : unit -> float
 (** Return the total number of bytes allocated since the program was
    started.  It is returned as a [float] to avoid overflow problems
    with [int] on 32-bit machines. *)
+
+(*
+val get_minor_free : unit -> int = "caml_gc_get_minor_free"
+(** Return the number of free words in the minor heap. *)
+*)
 
 val finalise : ('a -> unit) -> 'a -> unit
 (** [finalise f v] registers [f] as a finalisation function for [v].
