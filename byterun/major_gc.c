@@ -224,7 +224,7 @@ static void mark_slice (intnat work)
                 /* Do not short-circuit the pointer. */
               }else{
                 Field (v, i) = f;
-                if (Is_block (f) && Is_young (f))
+                if (Is_block (f) && Is_young (f) && !Is_young (child))
                   Add_to_ref_table (caml_ref_table, &Field (v, i));
               }
             }else if (Tag_hd(chd) == Infix_tag) {
