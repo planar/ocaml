@@ -227,7 +227,8 @@ Algorithm:
 static uintnat percent_free_init = Percent_free_def;
 static uintnat max_percent_free_init = Max_percent_free_def;
 static uintnat minor_heap_init = Minor_heap_def;
-static uintnat minor_generations_init = Minor_generations_def;
+static uintnat age_limit_init = Minor_age_limit_def;
+static uintnat size_factor_init = Minor_size_factor_def;
 static uintnat heap_chunk_init = Heap_chunk_def;
 static uintnat heap_size_init = Init_heap_def;
 static uintnat max_stack_init = Max_stack_def;
@@ -314,7 +315,8 @@ static void parse_camlrunparam(void)
       switch (*opt++){
       case 'a': scanmult (opt, &p); caml_set_allocation_policy (p); break;
       case 'b': caml_record_backtrace(Val_true); break;
-      case 'g': scanmult (opt, &minor_generations_init); break;
+      case 'g': scanmult (opt, &age_limit_init); break;
+      case 'G': scanmult (opt, &size_factor_init); break;
       case 'h': scanmult (opt, &heap_size_init); break;
       case 'i': scanmult (opt, &heap_chunk_init); break;
       case 'l': scanmult (opt, &max_stack_init); break;
@@ -418,7 +420,7 @@ CAMLexport void caml_main(char **argv)
   /* Read the table of contents (section descriptors) */
   caml_read_section_descriptors(fd, &trail);
   /* Initialize the abstract machine */
-  caml_init_gc (minor_heap_init, minor_generations_init,
+  caml_init_gc (minor_heap_init, age_limit_init, size_factor_init,
                 heap_size_init, heap_chunk_init,
                 percent_free_init, max_percent_free_init);
   caml_init_stack (max_stack_init);
@@ -499,7 +501,7 @@ CAMLexport void caml_startup_code(
     exe_name = proc_self_exe;
   caml_external_raise = NULL;
   /* Initialize the abstract machine */
-  caml_init_gc (minor_heap_init, minor_generations_init,
+  caml_init_gc (minor_heap_init, age_limit_init, size_factor_init,
                 heap_size_init, heap_chunk_init,
                 percent_free_init, max_percent_free_init);
   caml_init_stack (max_stack_init);

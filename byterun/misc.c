@@ -183,6 +183,9 @@ CAMLexport char * caml_strconcat(int n, ...)
 #ifdef CAML_INSTR
 /* Timers for GC latency profiling (experimental, Linux-only) */
 
+#include <sys/types.h>
+#include <unistd.h>
+
 struct CAML_INSTR_BLOCK *CAML_INSTR_LOG = NULL;
 
 #define Get_time(p,i) ((p)->ts[(i)].tv_nsec + 1000000000 * (p)->ts[(i)].tv_sec)

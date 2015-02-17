@@ -31,7 +31,7 @@ extern intnat
 
 uintnat caml_normalize_heap_increment (uintnat);
 
-void caml_init_gc (uintnat minor_size, uintnat minor_generations,
+void caml_init_gc (uintnat minor_size, uintnat age_limit, uintnat size_factor,
                    uintnat major_size, uintnat major_incr,
                    uintnat percent_fr, uintnat percent_m);
 

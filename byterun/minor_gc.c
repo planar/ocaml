@@ -74,6 +74,7 @@
 */
 
 asize_t caml_minor_heap_wsz, caml_minor_aging_wsz;
+asize_t caml_aging_size_factor;
 static void *caml_young_base = NULL;
 CAMLexport value *caml_young_start = NULL, *caml_young_end = NULL;
 CAMLexport value *caml_young_alloc_start = NULL,
@@ -87,25 +88,54 @@ CAMLexport value *caml_young_aging_start = NULL,
                  *caml_young_aging_end = NULL;
 CAMLexport value *caml_young_aging_ptr = NULL;
 
-/* [caml_young_aging_phase] is always 0 or 1.
+/* [aging_phase] is always 0 or 1.
    When it is 0, [caml_young_aging_start]...[caml_young_aging_mid] is the
    To or Active space. When it is 1, it is the From or Inactive space.
-   [caml_young_aging_phase] changes at the beginning of each minor collection.
+   [aging_phase] changes at the beginning of each minor collection.
 */
-static int caml_young_aging_phase = 0;
+static int aging_phase = 0;
+
+/* [caml_special_promote_value] holds a value that must be promoted
+   to the major heap by the minor GC, regardless of its age.
+*/
+CAMLexport value caml_special_promote_value = 0;
 
 CAMLexport struct caml_ref_table
   caml_ref_table = { NULL, NULL, NULL, NULL, NULL, 0, 0},
   caml_weak_ref_table = { NULL, NULL, NULL, NULL, NULL, 0, 0};
 
+int caml_young_age_limit = 0;
 int caml_in_minor_collection = 0;
-
-#define YOUNG_BASE(g) (caml_young_start_total + (g) * caml_minor_heap_size * 2)
 
 #ifdef DEBUG
 static unsigned long minor_gc_counter = 0;
 extern uintnat caml_global_event_count;  /* defined in debugger.c */
 #endif /* DEBUG */
+
+/* [promoted_list] holds a chained list of values that were promoted
+   to the major heap by this collection. */
+static value promoted_list;
+
+/* Macros for managing the aging heap:
+   Age(v): access the age field (located before the header) (read/write).
+   Is_in_from_space(v): true iff [v] is in the From/Active space or in
+     the allocation space.
+*/
+#define Age(v) (((value *)(v))[-2])
+
+/* Note: [Is_in_from_space (v)] implies [Is_young (v)]. */
+#define Is_in_from_space(v)                                                   \
+  (Is_young (v) && ((value *)(v) < caml_young_alloc_end                       \
+                    || ((value *)(v) < caml_young_aging_mid) == aging_phase))
+#define To_space_start \
+  (aging_phase ? caml_young_aging_mid : caml_young_aging_start)
+#define To_space_end \
+  (aging_phase ? caml_young_aging_end : caml_young_aging_mid)
+#define From_space_start \
+  (aging_phase ? caml_young_aging_start : caml_young_aging_mid)
+#define From_space_end \
+  (aging_phase ? caml_young_aging_mid : caml_young_aging_end)
+
 
 void caml_alloc_table (struct caml_ref_table *tbl, asize_t sz, asize_t rsv)
 {
@@ -132,16 +162,17 @@ static void reset_table (struct caml_ref_table *tbl)
 }
 
 /* Note: the GC is already initialized iff [caml_young_base != NULL]. */
-void caml_set_minor_heap_size (asize_t alloc_wsz, int aging_wsz)
+void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
 {
   value *new_heap;
   void *new_heap_base;
   asize_t full_wsz;
+  asize_t aging_wsz;
 
-  if (alloc_wsz & 1) ++ alloc_wsz;
+  Assert ((alloc_wsz & 1) == 0);
   Assert (alloc_wsz >= Minor_heap_min);
   Assert (alloc_wsz <= Minor_heap_max);
-  if (aging_wsz < 3 * alloc_wsz) aging_wsz = 0;
+  aging_wsz = aging_factor * alloc_wsz;
   full_wsz = alloc_wsz + aging_wsz;
 
   if (caml_young_ptr != caml_young_alloc_end){
@@ -154,11 +185,12 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, int aging_wsz)
   new_heap = (value *) caml_aligned_malloc (Bsize_wsize (full_wsz),
                                             0, &new_heap_base);
   if (new_heap == NULL) caml_raise_out_of_memory();
-  if (caml_page_table_add(In_young, new_heap, new_heap + fullsize) != 0)
+  if (caml_page_table_add(In_young, new_heap,
+                          new_heap + Bsize_wsize (full_wsz)) != 0)
     caml_raise_out_of_memory();
 
   if (caml_young_base != NULL){
-    caml_page_table_remove(In_young, caml_young_start_total, caml_young_end);
+    caml_page_table_remove(In_young, caml_young_start, caml_young_end);
     free (caml_young_base);
   }
   caml_young_base = new_heap_base;
@@ -180,30 +212,54 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, int aging_wsz)
   reset_table (&caml_weak_ref_table);
 }
 
+void caml_set_minor_age_limit (asize_t limit)
+{
+  if (limit > caml_young_age_limit){
+    caml_minor_marking_counter = limit;
+  }
+  caml_young_age_limit = limit;
+}
+
+
+/* Maximum age of non-promoted blocks after this minor collection. */
+static int age_limit;
+
 /* Allocate space of size [wosz] and tag [tag].
    Where to allocate it, depends on [v]'s age and the [age_limit]
    variable. [v] is guaranteed to be in the minor heap.
    To do a full minor GC, set [age_limit] to 0.
+
+   This function will also chain together in [promoted_list] all
+   the [v]s that are in the aging heap and that get promoted.
 */
 static value alloc_next_gen (asize_t wosz, tag_t tag, value v)
 {
+  CAMLassert (Is_young (v));
   if (v == caml_special_promote_value){
     /* FIXME find a way to get rid of this test. */
     return caml_alloc_shr (wosz, tag);
   }else{
     value result;
     int age = 0;
-    if (v >= caml_young_aging_start){
-      age = Get_age (v);
+    if ((value *) v >= caml_young_aging_start){
+      age = Age (v);
     }
 
     if (age >= age_limit){
+      if (age > 0){
+        CAMLassert ((value *) v >= caml_young_aging_start);
+        Age (v) = promoted_list;
+        promoted_list = v;
+      }else{
+        CAMLassert ((value *) v < caml_young_aging_start);
+      }
       return caml_alloc_shr (wosz, tag);
     }else{
       caml_young_aging_ptr -= Whsize_wosize (wosz) + 1;
       CAMLassert (caml_young_aging_ptr >= To_space_start);
       result = Val_hp (caml_young_aging_ptr + 1);
       Hd_val (result) = Make_header (wosz, tag, Caml_white);
+      Age (result) = age + 1;
       return result;
     }
   }
@@ -211,9 +267,6 @@ static value alloc_next_gen (asize_t wosz, tag_t tag, value v)
 
 static value oldify_todo_list = 0;
 int caml_do_full_minor = 0;
-
-/* Note: [Is_in_from_space (v)] implies [Is_young (v)]. */
-#define Is_in_from_space(v) todo()
 
 /* Note that the tests on the tag depend on the fact that Infix_tag,
    Forward_tag, and No_scan_tag are contiguous.
@@ -365,8 +418,9 @@ static void clean_minor_heap (void)
     caml_gc_message (0x02, "<", 0);
     prev_alloc_words = caml_allocated_words;
     caml_in_minor_collection = 1;
-    caml_young_aging_phase = 1 - caml_young_aging_phase;
+    aging_phase = 1 - aging_phase;
     caml_young_aging_ptr = To_space_end;
+    promoted_list = 0;
     if (caml_special_promote_value != 0){
       value dummy;
       caml_oldify_one (caml_special_promote_value, &dummy);
@@ -398,18 +452,18 @@ static void clean_minor_heap (void)
     /* We have to add to ref_table all the pointers from
        newly-promoted blocks to the non-promoted ones. */
     if (caml_young_aging_ptr != To_space_end){
-      value *p;
+      value v;
       asize_t sz, i;
-      for (p = promoted_list; p != 0; p = Age_field (p)){
-        Assert (Hd_hp (p) == 0);
-        value v = Field (Val_hp (p), 0);
-        tag_t t = Tag_val (v);
+      for (v = promoted_list; v != 0; v = Age (v)){
+        Assert (Hd_val (v) == 0);
+        value w = Field (v, 0);
+        tag_t t = Tag_val (w);
         if (t < No_scan_tag){
-          sz = Wosize_val (v);
+          sz = Wosize_val (w);
           for (i = 0; i < sz; ++i){
-            value f = Field (v, i);
+            value f = Field (w, i);
             if (Is_block (f) && Is_young (f)){
-              ADD_TO_REF_TABLE (caml_ref_table, &(Field (v, i)));
+              Add_to_ref_table (caml_ref_table, &(Field (w, i)));
             }
           }
         }
@@ -418,6 +472,7 @@ static void clean_minor_heap (void)
     if (caml_special_promote_value != 0){
       value v = Field (caml_special_promote_value, 0);
       tag_t t = Tag_val (v);
+      asize_t sz, i;
       CAMLassert (Is_young (v));
       CAMLassert (Hd_val (caml_special_promote_value) == 0);
       if (t < No_scan_tag){
@@ -425,13 +480,13 @@ static void clean_minor_heap (void)
         for (i = 0; i < sz; ++i){
           value f = Field (v, i);
           if (Is_block (f) && Is_young (f)){
-            ADD_TO_REF_TABLE (caml_ref_table, &(Field (v, i)));
+            Add_to_ref_table (caml_ref_table, &(Field (v, i)));
           }
         }
       }
       caml_special_promote_value = 0;
     }
-    CAML_TIMER_TIME (tmr, "minor/update_ref_table");
+    CAML_INSTR_TIME (tmr, "minor/update_ref_table");
     for (q = r = caml_weak_ref_table.base; r < caml_weak_ref_table.ptr; r++){
 #ifdef DEBUG
       Debug_check (**r);
@@ -496,9 +551,17 @@ static void clean_minor_heap (void)
    age of every minor block, promotes the ones that are over the age limit.
    Also promotes caml_special_promote_value, whatever its age might be.
 */
-CAMLexport void caml_minor_collection_clean (uintnat slice_size)
+CAMLexport void caml_minor_collection_clean (void)
 {
-  todo ("set age_limit depending on available size and caml_young_age_limit");
+  /* Set [age_limit] to guarantee that there is enough space to copy
+     all the [alloc] space. */
+  if (caml_young_aging_ptr - To_space_start >= 3 * caml_minor_heap_wsz / 2){
+    age_limit = caml_young_age_limit;
+  }else if (caml_minor_aging_wsz >= 3 * caml_minor_heap_wsz / 2){
+    age_limit = 1;
+  }else{
+    age_limit = 0;
+  }
   clean_minor_heap ();
 }
 
@@ -586,7 +649,7 @@ void caml_realloc_ref_table (struct caml_ref_table *tbl)
     asize_t sz;
     asize_t cur_ptr = tbl->ptr - tbl->base;
 
-    caml_urge_major_slice ();
+    caml_request_major_slice ();
     tbl->size *= 2;
     sz = (tbl->size + tbl->reserve) * sizeof (value *);
     caml_gc_message (0x08, "Growing ref_table to %"
@@ -607,13 +670,10 @@ void caml_realloc_ref_table (struct caml_ref_table *tbl)
    The minor heap must be clean. */
 extern void caml_minor_do_fields (scanning_action f)
 {
-  int g;
   value *p;
   asize_t i, sz;
 
-  for (p = caml_young_alloc_ptr;
-       p < caml_young_alloc_end;
-       p += Whsize_wosize (sz)){
+  for (p = caml_young_ptr; p < caml_young_alloc_end; p += Whsize_wosize (sz)){
     sz = Wosize_hp (p);
     if (Tag_hp (p) < No_scan_tag){
       for (i = 0; i < sz; ++i){

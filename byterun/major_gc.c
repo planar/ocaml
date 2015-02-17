@@ -79,7 +79,7 @@ static unsigned long major_gc_counter = 0;
    which breaks the minor GC invariants when the ref_table entry hits
    the oldify_todo_list links.
 
-   [caml_minor_marking_counter] counts down from [caml_minor_generations - 1].
+   [caml_minor_marking_counter] counts down from [caml_young_age_limit + 1].
    It is unsafe to begin sweeping until it reaches 0.
  */
 uintnat caml_minor_marking_counter = 0;
@@ -154,8 +154,7 @@ static void start_cycle (void)
   caml_gc_phase = Phase_mark;
   caml_gc_subphase = Subphase_roots;
   markhp = NULL;
-  caml_minor_marking_counter = caml_minor_generations - 1;
-    /* Note: we are counting the minor GC that was just done. */
+  caml_minor_marking_counter = caml_young_age_limit + 1;
 #ifdef DEBUG
   ++ major_gc_counter;
   caml_heap_check ();

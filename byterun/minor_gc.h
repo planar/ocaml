@@ -24,12 +24,14 @@ CAMLextern value *caml_young_trigger;
 
 CAMLextern value *caml_young_aging_start, *caml_young_aging_mid,
                  *caml_young_aging_end;
-CAMLexport value *caml_young_aging_ptr;
-CAMLexport int caml_young_aging_phase;
+CAMLextern value *caml_young_aging_ptr;
 
 extern asize_t caml_minor_heap_wsz, caml_minor_aging_wsz;
+extern asize_t caml_aging_size_factor;
 extern int caml_young_age_limit;
 extern int caml_in_minor_collection;
+
+CAMLextern value caml_special_promote_value;
 
 struct caml_ref_table {
   value **base;
@@ -53,9 +55,10 @@ CAMLextern struct caml_ref_table caml_ref_table, caml_weak_ref_table;
 
 #define Is_young(val) \
   (Assert (Is_block (val)), \
-   (addr)(val) < (addr)caml_young_end && (addr)(val) > (addr)caml_young_start_total)
+   (value *)(val) < caml_young_end && (value *)(val) >= caml_young_start)
 
-extern void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_wsz);
+extern void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor);
+extern void caml_set_minor_age_limit (asize_t limit);
 CAMLextern void caml_minor_collection_clean (void);
 CAMLextern void caml_minor_collection_empty (void);
 CAMLextern void caml_gc_dispatch (void);
