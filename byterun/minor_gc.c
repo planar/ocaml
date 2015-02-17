@@ -32,9 +32,32 @@
    [caml_young_start] ... [caml_young_end]
        The whole range of the minor heap: all young blocks are inside
        this interval.
-   [caml_young_alloc_start]...[caml_young_alloc_end]
+
+   There are two sub-intervals:
+   [caml_young_alloc_start]...[caml_young_alloc_mid]...[caml_young_alloc_end]
        The allocation arena: newly-allocated blocks are carved from
-       this interval.
+       this interval. [caml_young_alloc_mid] is the mid-point of this
+       interval.
+   [caml_young_aging_start]...[caml_young_aging_mid]...[caml_young_aging_end]
+       The aging area, divided in two semi-spaces, which rotate roles:
+       each space goes through 4 roles in a cycle:
+       - from space (during GC)
+       - inactive space (between GCs)
+       - to space (during GC)
+       - active space (between GCs)
+       They are 180 degrees out of phase: when one is From, the other
+       is To, and when one is Active, the other is Inactive.
+       Blocks in this interval have an additional word just before
+       their header: their generation counter.
+
+       Layout:
+         caml_young_start = caml_young_alloc_start
+                            caml_young_alloc_mid
+                            caml_young_alloc_end = caml_young_aging_start
+                                                   caml_young_aging_mid
+         caml_young_end =                          caml_young_aging_end
+
+   Pointers into these spaces:
    [caml_young_ptr], [caml_young_trigger], [caml_young_limit]
        These pointers are all inside the allocation arena.
        - [caml_young_ptr] is where the next allocation will take place.
@@ -45,14 +68,31 @@
          [caml_young_ptr] for allocation. It is either
          [caml_young_alloc_end] if a signal is pending and we are in
          native code, or [caml_young_trigger].
+   [caml_young_aging_ptr]
+       This is the allocation pointer for the aging area. It is always
+       within the current To/Active space.
 */
 
-asize_t caml_minor_heap_size;
+asize_t caml_minor_heap_wsz, caml_minor_aging_wsz;
 static void *caml_young_base = NULL;
 CAMLexport value *caml_young_start = NULL, *caml_young_end = NULL;
-CAMLexport value *caml_young_alloc_start = NULL, *caml_young_alloc_end = NULL;
+CAMLexport value *caml_young_alloc_start = NULL,
+                 *caml_young_alloc_mid = NULL,
+                 *caml_young_alloc_end = NULL;
 CAMLexport value *caml_young_ptr = NULL, *caml_young_limit = NULL;
 CAMLexport value *caml_young_trigger = NULL;
+
+CAMLexport value *caml_young_aging_start = NULL,
+                 *caml_young_aging_mid = NULL,
+                 *caml_young_aging_end = NULL;
+CAMLexport value *caml_young_aging_ptr = NULL;
+
+/* [caml_young_aging_phase] is always 0 or 1.
+   When it is 0, [caml_young_aging_start]...[caml_young_aging_mid] is the
+   To or Active space. When it is 1, it is the From or Inactive space.
+   [caml_young_aging_phase] changes at the beginning of each minor collection.
+*/
+static int caml_young_aging_phase = 0;
 
 CAMLexport struct caml_ref_table
   caml_ref_table = { NULL, NULL, NULL, NULL, NULL, 0, 0},
@@ -107,7 +147,7 @@ void caml_set_minor_heap_size (asize_t size)
     CAML_TIMER_SETUP (tmr, "force_minor/set_minor_heap_size");
     caml_empty_minor_heap ();
     caml_requested_minor_gc = 0;
-    caml_young_trigger = caml_young_alloc_start + caml_minor_heap_size / 2;
+    caml_young_trigger = caml_young_alloc_start + caml_minor_heap_wsz / 2;
     caml_young_limit = caml_young_trigger;
   }
   CAMLassert (caml_young_ptr == caml_young_alloc_end);
@@ -128,7 +168,7 @@ void caml_set_minor_heap_size (asize_t size)
   caml_young_trigger = caml_young_alloc_start;
   caml_young_limit = caml_young_trigger;
   caml_young_ptr = caml_young_alloc_end;
-  caml_minor_heap_size = size;
+  caml_minor_heap_wsz = Wsize_bsize (size);
 
   reset_table (&caml_ref_table);
   reset_table (&caml_weak_ref_table);
@@ -321,7 +361,7 @@ CAMLexport void caml_gc_dispatch (void)
     /* The minor heap is full, we must do a minor collection. */
     caml_empty_minor_heap ();
     caml_requested_minor_gc = 0;
-    caml_young_trigger = caml_young_alloc_start + caml_minor_heap_size / 2;
+    caml_young_trigger = caml_young_alloc_start + caml_minor_heap_wsz / 2;
     caml_young_limit = caml_young_trigger;
     CAML_TIMER_TIME (tmr, "dispatch/minor");
 
@@ -333,7 +373,7 @@ CAMLexport void caml_gc_dispatch (void)
          a second minor collection. */
       caml_empty_minor_heap ();
       caml_requested_minor_gc = 0;
-      caml_young_trigger = caml_young_alloc_start + caml_minor_heap_size / 2;
+      caml_young_trigger = caml_young_alloc_start + caml_minor_heap_wsz / 2;
       caml_young_limit = caml_young_trigger;
       CAML_TIMER_TIME (tmr, "dispatch/finalizers_minor");
     }
@@ -373,7 +413,7 @@ void caml_realloc_ref_table (struct caml_ref_table *tbl)
                                       Assert (tbl->limit >= tbl->threshold);
 
   if (tbl->base == NULL){
-    caml_alloc_table (tbl, caml_minor_heap_size / sizeof (value) / 8, 256);
+    caml_alloc_table (tbl, caml_minor_heap_wsz / 8, 256);
   }else if (tbl->limit == tbl->threshold){
     CAML_TIMER_SETUP (tmr, "request_minor/realloc_ref_table");
     caml_gc_message (0x08, "ref_table threshold crossed\n", 0);

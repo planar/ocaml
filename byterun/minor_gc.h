@@ -21,7 +21,14 @@ CAMLextern value *caml_young_start, *caml_young_end;
 CAMLextern value *caml_young_alloc_start, *caml_young_alloc_end;
 CAMLextern value *caml_young_ptr, *caml_young_limit;
 CAMLextern value *caml_young_trigger;
-extern asize_t caml_minor_heap_size;
+
+CAMLexport value *caml_young_aging_start = NULL,
+                 *caml_young_aging_semi = NULL,
+                 *caml_young_aging_end = NULL;
+CAMLexport value *caml_young_aging_ptr = NULL;
+CAMLexport int caml_young_aging_phase = 0;
+
+extern asize_t caml_minor_heap_wsz, caml_minor_aging_wsz;
 extern int caml_in_minor_collection;
 
 struct caml_ref_table {

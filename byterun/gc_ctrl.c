@@ -325,7 +325,7 @@ CAMLprim value caml_gc_get(value v)
   CAMLlocal1 (res);
 
   res = caml_alloc_tuple (7);
-  Store_field (res, 0, Val_long (Wsize_bsize (caml_minor_heap_size)));  /* s */
+  Store_field (res, 0, Val_long (caml_minor_heap_wsz));                 /* s */
   Store_field (res, 1, Val_long (caml_major_heap_increment));           /* i */
   Store_field (res, 2, Val_long (caml_percent_free));                   /* o */
   Store_field (res, 3, Val_long (caml_verb_gc));                        /* v */
@@ -362,7 +362,7 @@ CAMLprim value caml_gc_set(value v)
 {
   uintnat newpf, newpm;
   asize_t newheapincr;
-  asize_t newminsize;
+  asize_t newminwsz;
   uintnat oldpolicy;
   CAML_TIMER_SETUP (tmr, "");
 
@@ -404,11 +404,11 @@ CAMLprim value caml_gc_set(value v)
 
     /* Minor heap size comes last because it will trigger a minor collection
        (thus invalidating [v]) and it can raise [Out_of_memory]. */
-  newminsize = Bsize_wsize (norm_minsize (Long_val (Field (v, 0))));
-  if (newminsize != caml_minor_heap_size){
-    caml_gc_message (0x20, "New minor heap size: %luk bytes\n",
-                     newminsize/1024);
-    caml_set_minor_heap_size (newminsize);
+  newminwsz = norm_minsize (Long_val (Field (v, 0)));
+  if (newminwsz != caml_minor_heap_wsz){
+    caml_gc_message (0x20, "New minor heap size: %luk words\n",
+                     newminwsz/1024);
+    caml_set_minor_heap_size (newminwsz);
   }
   CAML_TIMER_TIME (tmr, "explicit/gc_set");
   return Val_unit;
@@ -520,8 +520,8 @@ void caml_init_gc (uintnat minor_size, uintnat major_size,
   caml_percent_free = norm_pfree (percent_fr);
   caml_percent_max = norm_pmax (percent_m);
   caml_init_major_heap (major_heap_size);
-  caml_gc_message (0x20, "Initial minor heap size: %luk bytes\n",
-                   caml_minor_heap_size / 1024);
+  caml_gc_message (0x20, "Initial minor heap size: %luk words\n",
+                   caml_minor_heap_wsz / 1024);
   caml_gc_message (0x20, "Initial major heap size: %luk bytes\n",
                    major_heap_size / 1024);
   caml_gc_message (0x20, "Initial space overhead: %lu%%\n", caml_percent_free);

@@ -433,7 +433,7 @@ CAMLexport value caml_alloc_shr (mlsize_t wosize, tag_t tag)
   }
   Assert (Hd_hp (hp) == Make_header (wosize, tag, caml_allocation_color (hp)));
   caml_allocated_words += Whsize_wosize (wosize);
-  if (caml_allocated_words > Wsize_bsize (caml_minor_heap_size)){
+  if (caml_allocated_words > caml_minor_heap_wsz){
     CAML_TIMER_SETUP (tmr, "request_major/alloc_shr");
     caml_request_major_slice ();
   }
@@ -491,7 +491,7 @@ CAMLexport void caml_adjust_gc_speed (mlsize_t res, mlsize_t max)
     caml_request_major_slice ();
   }
   if (caml_extra_heap_resources
-           > (double) Wsize_bsize (caml_minor_heap_size) / 2.0
+           > (double) caml_minor_heap_wsz / 2.0
              / (double) Wsize_bsize (caml_stat_heap_size)) {
     CAML_TIMER_SETUP (tmr, "request_major/adjust_gc_speed_2");
     caml_request_major_slice ();
