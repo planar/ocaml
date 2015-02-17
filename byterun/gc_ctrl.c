@@ -257,10 +257,10 @@ void caml_heap_check (void)
 CAMLprim value caml_gc_stat(value v)
 {
   value result;
-  CAML_TIMER_SETUP (tmr, "");
+  CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
   result = heap_stats (1);
-  CAML_TIMER_TIME (tmr, "explicit/gc_stat");
+  CAML_INSTR_TIME (tmr, "explicit/gc_stat");
   return result;
 }
 
@@ -372,7 +372,7 @@ CAMLprim value caml_gc_set(value v)
   asize_t newheapincr;
   asize_t newminwsz;
   uintnat oldpolicy;
-  CAML_TIMER_SETUP (tmr, "");
+  CAML_INSTR_SETUP (tmr, "");
 
   caml_verb_gc = Long_val (Field (v, 3));
 
@@ -419,18 +419,18 @@ CAMLprim value caml_gc_set(value v)
     caml_set_minor_heap_size (newminwsz, newminwsz * 4);
     todo ("user-settable size for aging area");
   }
-  CAML_TIMER_TIME (tmr, "explicit/gc_set");
+  CAML_INSTR_TIME (tmr, "explicit/gc_set");
   return Val_unit;
 }
 
 CAMLprim value caml_gc_minor(value v)
 {
-  CAML_TIMER_SETUP (tmr, "");
+  CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_empty_minor_heap ();
   caml_request_major_slice ();  /* FIXME do we want to do this ? */
   caml_gc_dispatch ();
-  CAML_TIMER_TIME (tmr, "explicit/gc_minor");
+  CAML_INSTR_TIME (tmr, "explicit/gc_minor");
   return Val_unit;
 }
 
@@ -452,20 +452,20 @@ static void test_and_compact (void)
 
 CAMLprim value caml_gc_major(value v)
 {
-  CAML_TIMER_SETUP (tmr, "");
+  CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x1, "Major GC cycle requested\n", 0);
   caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   test_and_compact ();
   caml_final_do_calls ();
-  CAML_TIMER_TIME (tmr, "explicit/gc_major");
+  CAML_INSTR_TIME (tmr, "explicit/gc_major");
   return Val_unit;
 }
 
 CAMLprim value caml_gc_full_major(value v)
 {
-  CAML_TIMER_SETUP (tmr, "");
+  CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x1, "Full major GC cycle requested\n", 0);
   caml_minor_collection_empty ();
@@ -475,23 +475,23 @@ CAMLprim value caml_gc_full_major(value v)
   caml_finish_major_cycle ();
   test_and_compact ();
   caml_final_do_calls ();
-  CAML_TIMER_TIME (tmr, "explicit/gc_full_major");
+  CAML_INSTR_TIME (tmr, "explicit/gc_full_major");
   return Val_unit;
 }
 
 CAMLprim value caml_gc_major_slice (value v)
 {
-  CAML_TIMER_SETUP (tmr, "");
+  CAML_INSTR_SETUP (tmr, "");
   Assert (Is_long (v));
   caml_request_major_slice ();
   caml_gc_dispatch ();
-  CAML_TIMER_TIME (tmr, "explicit/gc_major_slice");
+  CAML_INSTR_TIME (tmr, "explicit/gc_major_slice");
   return Val_long (0);  /* FIXME TODO return current slice credit. */
 }
 
 CAMLprim value caml_gc_compaction(value v)
 {
-  CAML_TIMER_SETUP (tmr, "");
+  CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x10, "Heap compaction requested\n", 0);
   caml_minor_collection_empty ();
@@ -501,7 +501,7 @@ CAMLprim value caml_gc_compaction(value v)
   caml_finish_major_cycle ();
   caml_compact_heap ();
   caml_final_do_calls ();
-  CAML_TIMER_TIME (tmr, "explicit/gc_compact");
+  CAML_INSTR_TIME (tmr, "explicit/gc_compact");
   return Val_unit;
 }
 
