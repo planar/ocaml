@@ -205,6 +205,8 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
   caml_young_aging_start = caml_young_alloc_end;
   caml_young_aging_mid = caml_young_aging_start + aging_wsz / 2;
   caml_young_aging_end = caml_young_end;
+  aging_phase = 0;
+  caml_young_aging_ptr = caml_young_aging_mid;
   CAMLassert (caml_young_aging_end == caml_young_aging_start + aging_wsz);
   caml_minor_heap_wsz = alloc_wsz;
 
@@ -399,6 +401,14 @@ void check_minor_value (value v, value *p)
     Debug_check (Hd_val(v));
     if (Tag_val (v) < No_scan_tag) Debug_check (Field(v, 0));
   }
+}
+int caml_check_minor_heap_empty (void)
+{
+  CAMLassert (caml_young_ptr == caml_young_alloc_end);
+  CAMLassert (caml_young_aging_ptr == To_space_end);
+  CAMLassert (caml_ref_table.ptr == caml_ref_table.base);
+  CAMLassert (caml_weak_ref_table.ptr == caml_weak_ref_table.base);
+  return 1;
 }
 #endif
 
@@ -684,7 +694,12 @@ extern void caml_minor_do_fields (scanning_action f)
   for (p = caml_young_aging_ptr + 1;
        p < To_space_end;
        p += Whsize_wosize (sz) + 1){
+    while (Age(Val_hp(p)) == 0){
+      /* Skip fragments; see [caml_obj_truncate]. */
+      ++p;
+    }
     sz = Wosize_hp (p);
+    CAMLassert (Op_hp (p) + sz <= To_space_end);
     if (Tag_hp (p) < No_scan_tag){
       for (i = 0; i < sz; ++i){
         (*f) (Field (Val_hp (p), i), &Field (Val_hp (p), i));

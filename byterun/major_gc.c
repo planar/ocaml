@@ -34,15 +34,7 @@
 #endif
 
 #ifdef DEBUG
-
-#include "minor_gc.h"
-int caml_check_minor_heap_empty (void)
-{
-  CAMLassert (caml_young_ptr == caml_young_end);
-  CAMLassert (caml_ref_table.ptr == caml_ref_table.base);
-  CAMLassert (caml_weak_ref_table.ptr == caml_weak_ref_table.base);
-  return 1;
-}
+int caml_check_minor_heap_empty (void); /* from minor_gc.c */
 #endif
 
 uintnat caml_percent_free;

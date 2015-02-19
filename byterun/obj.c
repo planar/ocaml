@@ -126,7 +126,10 @@ CAMLprim value caml_obj_dup(value arg)
    algorithm:
    Change the length field of the header.  Make up a white object
    with the leftover part of the object: this is needed in the major
-   heap and harmless in the minor heap.
+   heap and harmless in the allocation part of the minor heap.
+   In the aging part of the minor heap, we also have to set up a
+   word to store the age of the leftover object. If there is no
+   space for age+header, we store 0, see [caml_minor_do_fields].
 */
 CAMLprim value caml_obj_truncate (value v, value newsize)
 {
@@ -159,9 +162,21 @@ CAMLprim value caml_obj_truncate (value v, value newsize)
      heap-checking code in debug mode. */
   /* We must also mark it with the allocation color (instead of white)
      for the same reason, see [caml_minor_marking_counter]. */
-  new_hp = &Field (v, new_wosize);
-  *new_hp = Make_header (Wosize_whsize (wosize-new_wosize), Abstract_tag,
-                         caml_allocation_color (new_hp));
+  if (caml_young_aging_start <= (value*)v && (value*)v < caml_young_aging_end){
+    /* Set up counter and header instead of just header. */
+    if (new_wosize == wosize - 1){
+      Field (v, new_wosize) = 0;
+    }else{
+      Field (v, new_wosize) = 1;
+      new_hp = &Field (v, new_wosize + 1);
+      *new_hp = Make_header (Wosize_whsize (wosize-new_wosize-1),
+                             Abstract_tag, Caml_white);
+    }
+  }else{
+    new_hp = &Field (v, new_wosize);
+    *new_hp = Make_header (Wosize_whsize (wosize-new_wosize), Abstract_tag,
+                           caml_allocation_color (new_hp));
+  }
   Hd_val (v) = Make_header (new_wosize, tag, color);
   return Val_unit;
 }
