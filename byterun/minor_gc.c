@@ -483,7 +483,8 @@ static void clean_minor_heap (void)
       value v = Field (caml_special_promote_value, 0);
       tag_t t = Tag_val (v);
       asize_t sz, i;
-      CAMLassert (Is_young (v));
+      CAMLassert (Is_young (caml_special_promote_value));
+      CAMLassert (Is_in_heap (v));
       CAMLassert (Hd_val (caml_special_promote_value) == 0);
       if (t < No_scan_tag){
         sz = Wosize_val (v);
