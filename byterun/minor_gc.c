@@ -110,6 +110,7 @@ int caml_in_minor_collection = 0;
 #ifdef DEBUG
 static unsigned long minor_gc_counter = 0;
 extern uintnat caml_global_event_count;  /* defined in debugger.c */
+static asize_t caml_allocated_in_aging;
 #endif /* DEBUG */
 
 /* [promoted_list] holds a chained list of values that were promoted
@@ -209,6 +210,7 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
   caml_young_aging_ptr = caml_young_aging_mid;
   CAMLassert (caml_young_aging_end == caml_young_aging_start + aging_wsz);
   caml_minor_heap_wsz = alloc_wsz;
+  caml_minor_aging_wsz = aging_wsz;
 
   reset_table (&caml_ref_table);
   reset_table (&caml_weak_ref_table);
@@ -257,6 +259,9 @@ static value alloc_next_gen (asize_t wosz, tag_t tag, value v)
       }
       return caml_alloc_shr (wosz, tag);
     }else{
+#ifdef DEBUG
+      caml_allocated_in_aging += Whsize_wosize (wosz);
+#endif
       caml_young_aging_ptr -= Whsize_wosize (wosz) + 1;
       CAMLassert (caml_young_aging_ptr >= To_space_start);
       result = Val_hp (caml_young_aging_ptr + 1);
@@ -427,6 +432,9 @@ static void clean_minor_heap (void)
     CAML_INSTR_SETUP (tmr, "minor");
     caml_gc_message (0x02, "<", 0);
     prev_alloc_words = caml_allocated_words;
+#ifdef DEBUG
+    caml_allocated_in_aging = 0;
+#endif
     caml_in_minor_collection = 1;
     aging_phase = 1 - aging_phase;
     caml_young_aging_ptr = To_space_end;
@@ -539,6 +547,12 @@ static void clean_minor_heap (void)
       if (caml_minor_marking_counter > 0) --caml_minor_marking_counter;
     }
     caml_stat_promoted_words += caml_allocated_words - prev_alloc_words;
+#ifdef DEBUG
+    caml_gc_debug_message (0x1000, "words promoted: %lu\n",
+                           caml_allocated_words - prev_alloc_words);
+    caml_gc_debug_message (0x1000, "words in aging zone: %lu\n",
+                           caml_allocated_in_aging);
+#endif
     if (caml_minor_gc_end_hook != NULL) (*caml_minor_gc_end_hook) ();
   }
 
