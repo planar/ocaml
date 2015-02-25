@@ -106,14 +106,14 @@ static void realloc_gray_vals (void)
 void caml_darken (value v, value *p /* not used */)
 {
 #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
-  if (Is_block (v) && Wosize_val (v) > 0) {
+  if (Is_block (v) && !Is_young (v) && Wosize_val (v) > 0) {
     /* We insist that naked pointers to outside the heap point to things that
        look like values with headers coloured black.  This isn't always
        strictly necessary but is essential in certain cases---in particular
        when the value is allocated in a read-only section.  (For the values
        where it would be safe it is a performance improvement since we avoid
        putting them on the grey list.) */
-    CAMLassert (Is_in_heap (v) || Is_black_hd (Hd_val (v)));
+    CAMLassert (Is_in_heap (v) || Is_black_val (v) || Tag_val (v) == Infix_tag);
 #else
   if (Is_block (v) && Is_in_heap (v)) {
 #endif
@@ -197,13 +197,15 @@ static void mark_slice (intnat work)
           child = Field (v, i);
 #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
           if (Is_block (child)
+                && !Is_young (child)
                 && Wosize_val (child) > 0  /* Atoms never need to be marked. */
                 /* Closure blocks contain code pointers at offsets that cannot
                    be reliably determined, so we always use the page table when
                    marking such values. */
                 && (!marking_closure || Is_in_heap (child))) {
             /* See [caml_darken] for a description of this assertion. */
-            CAMLassert (Is_in_heap (child) || Is_black_hd (Hd_val (child)));
+            CAMLassert (Is_in_heap (child) || Is_black_hd (Hd_val (child))
+                        || Tag_val (child) == Infix_tag);
 #else
           if (Is_block (child) && Is_in_heap (child)) {
 #endif

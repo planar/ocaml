@@ -683,12 +683,27 @@ extern void caml_minor_do_fields (scanning_action f)
 {
   value *p;
   asize_t i, sz;
+  value v;
 
   for (p = caml_young_ptr; p < caml_young_alloc_end; p += Whsize_wosize (sz)){
     sz = Wosize_hp (p);
+#if defined (NATIVE_CODE) && defined (NO_NAKED_POINTERS)
+    if (Tag_hp (p) == Closure_tag){
+      for (i = 0; i < sz; ++i){
+        v = Field (Val_hp (p), i);
+        if (Is_block (v) && Is_in_heap (v)){
+          (*f) (v, &Field (Val_hp (p), i));
+        }
+      }
+      continue;
+    }
+#endif
     if (Tag_hp (p) < No_scan_tag){
       for (i = 0; i < sz; ++i){
-        (*f) (Field (Val_hp (p), i), &Field (Val_hp (p), i));
+        v = Field (Val_hp (p), i);
+        if (Is_block (v) && !Is_young (v)){
+          (*f) (v, &Field (Val_hp (p), i));
+        }
       }
     }
   }
@@ -701,9 +716,23 @@ extern void caml_minor_do_fields (scanning_action f)
     }
     sz = Wosize_hp (p);
     CAMLassert (Op_hp (p) + sz <= To_space_end);
+#if defined (NATIVE_CODE) && defined (NO_NAKED_POINTERS)
+    if (Tag_hp (p) == Closure_tag){
+      for (i = 0; i < sz; ++i){
+        v = Field (Val_hp (p), i);
+        if (Is_block (v) && Is_in_heap (v)){
+          (*f) (v, &Field (Val_hp (p), i));
+        }
+      }
+      continue;
+    }
+#endif
     if (Tag_hp (p) < No_scan_tag){
       for (i = 0; i < sz; ++i){
-        (*f) (Field (Val_hp (p), i), &Field (Val_hp (p), i));
+        v = Field (Val_hp (p), i);
+        if (Is_block (v) && !Is_young(v)){
+          (*f) (v, &Field (Val_hp (p), i));
+        }
       }
     }
   }
