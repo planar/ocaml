@@ -591,11 +591,19 @@ CAMLexport void caml_minor_collection_clean (void)
 }
 
 /* A full minor collection: completely empties the minor heap.
+   Also resets [minor_marking_counter] to 0 because the ref_tables are emptied.
 */
 CAMLexport void caml_minor_collection_empty (void)
 {
   age_limit = 0;
   clean_minor_heap ();
+  caml_requested_minor_gc = 0;
+  caml_young_trigger = caml_young_alloc_mid;
+  caml_young_limit = caml_young_trigger;
+
+  CAMLassert (caml_ref_table.ptr == caml_ref_table.base);
+  CAMLassert (caml_weak_ref_table.ptr == caml_weak_ref_table.base);
+  caml_minor_marking_counter = 0;
 }
 
 /* Do a minor collection or a slice of major collection, call finalisation
@@ -642,9 +650,12 @@ CAMLexport void caml_gc_dispatch (void)
 
 /* For backward compatibility with Lablgtk: do a minor collection to
    ensure that the minor heap is empty.
+   For backward compatibility with Coq: first do a slice of major collection
+   if appropriate.
 */
 CAMLexport void caml_minor_collection (void)
 {
+  caml_gc_dispatch ();
   caml_minor_collection_empty ();
 }
 
