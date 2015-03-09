@@ -538,8 +538,6 @@ static void clean_minor_heap (void)
     caml_in_minor_collection = 0;
     caml_final_transfer_young ();
     CAML_INSTR_TIME (tmr, "minor/finalized");
-    caml_stat_promoted_words += caml_allocated_words - prev_alloc_words;
-    CAML_INSTR_INT ("minor/promoted", caml_allocated_words - prev_alloc_words);
     ++ caml_stat_minor_collections;
     if (caml_do_full_minor){
       caml_minor_marking_counter = 0;
@@ -547,6 +545,7 @@ static void clean_minor_heap (void)
       if (caml_minor_marking_counter > 0) --caml_minor_marking_counter;
     }
     caml_stat_promoted_words += caml_allocated_words - prev_alloc_words;
+    CAML_INSTR_INT ("minor/promoted", caml_allocated_words - prev_alloc_words);
 #ifdef DEBUG
     caml_gc_debug_message (0x1000, "words promoted: %lu\n",
                            caml_allocated_words - prev_alloc_words);
