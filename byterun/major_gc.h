@@ -36,7 +36,6 @@ extern uintnat caml_allocated_words;
 extern double caml_extra_heap_resources;
 extern uintnat caml_dependent_size, caml_dependent_allocated;
 extern uintnat caml_fl_size_at_phase_change;
-extern uintnat caml_major_slice_credit;
 
 #define Phase_mark 0
 #define Phase_sweep 1
@@ -55,7 +54,7 @@ extern uintnat caml_minor_marking_counter;
 void caml_init_major_heap (asize_t);           /* size in bytes */
 asize_t caml_round_heap_chunk_size (asize_t);  /* size in bytes */
 void caml_darken (value, value *);
-void caml_major_collection_slice (intnat);
+intnat caml_major_collection_slice (intnat);
 void major_collection (void);
 void caml_finish_major_cycle (void);
 

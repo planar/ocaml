@@ -495,7 +495,7 @@ CAMLprim value caml_gc_major_slice (value v)
   caml_request_major_slice ();
   caml_gc_dispatch ();
   CAML_INSTR_TIME (tmr, "explicit/gc_major_slice");
-  return Val_long (0);  /* FIXME TODO return current slice credit. */
+  return Val_long (0);  /* FIXME TODO return work estimate */
 }
 
 CAMLprim value caml_gc_compaction(value v)

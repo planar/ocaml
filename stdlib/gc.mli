@@ -181,13 +181,13 @@ external minor : unit -> unit = "caml_gc_minor"
 (** Trigger a minor collection. *)
 
 external major_slice : int -> int = "caml_gc_major_slice";;
-(** [major_slice size] does a minor collection and a slice of major
-    collection. [size] is the amount of work done by this slice.
-    The GC computes how much work it should have done and records the
-    cumulative difference in an internal counter, which is used to
-    adjust the size of subsequent slices.
-    @return the contents of the internal counter.
-*)
+(** [major_slice n]
+    does a minor collection and a slice of major collection. [n] is the
+    size of the slice: the GC will do enough work to free (on average)
+    [n] words of memory. If [n] = 0, the GC will try to do enough work
+    to ensure that the next slice has 0 work to do.
+    Returns an approximation of the work that the next slice will have
+    to do. *)
 
 external major : unit -> unit = "caml_gc_major"
 (** Do a minor collection and finish the current major collection cycle. *)
