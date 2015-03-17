@@ -108,7 +108,6 @@ int caml_young_age_limit = 0;
 int caml_in_minor_collection = 0;
 
 #ifdef DEBUG
-static unsigned long minor_gc_counter = 0;
 extern uintnat caml_global_event_count;  /* defined in debugger.c */
 static asize_t caml_allocated_in_aging;
 #endif /* DEBUG */
@@ -565,7 +564,6 @@ static void clean_minor_heap (void)
     for (p = From_space_start; p < From_space_end; ++p){
       *p = Debug_free_minor;
     }
-    ++ minor_gc_counter;
     caml_minor_do_fields (check_minor_value);
   }
 #endif
@@ -619,6 +617,7 @@ CAMLexport void caml_gc_dispatch (void)
   if (trigger == caml_young_alloc_start || caml_requested_minor_gc){
     /* The minor heap is full, we must do a minor collection. */
     caml_minor_collection_clean ();
+    if (caml_gc_phase == Phase_idle) caml_major_collection_slice (-1);
     caml_requested_minor_gc = 0;
     caml_young_trigger = caml_young_alloc_mid;
     caml_young_limit = caml_young_trigger;
@@ -631,6 +630,7 @@ CAMLexport void caml_gc_dispatch (void)
       /* The finalizers have filled up the minor heap, we must do
          a second minor collection. */
       caml_minor_collection_clean ();
+      if (caml_gc_phase == Phase_idle) caml_major_collection_slice (-1);
       caml_requested_minor_gc = 0;
       caml_young_trigger = caml_young_alloc_mid;
       caml_young_limit = caml_young_trigger;

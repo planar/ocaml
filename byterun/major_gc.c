@@ -62,6 +62,10 @@ static value *weak_prev;
 static double caml_major_backlog = 0.0;
 static double caml_major_backlog_history = 0.0;
 
+int caml_major_window = 1;
+static double ring[Max_major_window] = { 0. };
+static int ring_index;
+
 #ifdef DEBUG
 static unsigned long major_gc_counter = 0;
 #endif
@@ -162,6 +166,12 @@ static void start_cycle (void)
 static value current_value = 0;
 static mlsize_t current_index = 0;
 
+#ifdef CAML_INSTR
+#define INSTR(x) x
+#else
+#define INSTR(x) /**/
+#endif
+
 static void mark_slice (intnat work)
 {
   value *gray_vals_ptr;  /* Local copy of [gray_vals_cur] */
@@ -170,6 +180,10 @@ static void mark_slice (intnat work)
   mlsize_t size, i, start, end; /* [start] is a local copy of [current_index] */
 #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
   int marking_closure = 0;
+#endif
+#ifdef CAML_INSTR
+  int slice_fields = 0;
+  int slice_pointers = 0;
 #endif
 
   if (caml_major_slice_begin_hook != NULL) (*caml_major_slice_begin_hook) ();
@@ -196,6 +210,7 @@ static void mark_slice (intnat work)
         end = (size - start < work) ? size : (start + work);
         CAMLassert (end > start);
         for (i = start; i < end; i++){
+          INSTR (slice_fields += end - start;)
           child = Field (v, i);
 #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
           if (Is_block (child)
@@ -211,6 +226,7 @@ static void mark_slice (intnat work)
 #else
           if (Is_block (child) && Is_in_heap (child)) {
 #endif
+            INSTR (++ slice_pointers;)
             chd = Hd_val (child);
             if (Tag_hd (chd) == Forward_tag){
               value f = Forward_val (child);
@@ -389,6 +405,8 @@ static void mark_slice (intnat work)
   current_value = v;
   current_index = start;
   if (caml_major_slice_end_hook != NULL) (*caml_major_slice_end_hook) ();
+  INSTR (CAML_INSTR_INT ("major/mark/slice/fields", slice_fields);)
+  INSTR (CAML_INSTR_INT ("major/mark/slice/pointers", slice_pointers);)
 }
 
 static void sweep_slice (intnat work)
@@ -452,11 +470,11 @@ static char *mark_slice_name[] = {
   /* 7 */ NULL,
   /* 8 */ NULL,
   /* 9 */ NULL,
-  /* 10 */ "major/mark_roots",
-  /* 11 */ "major/mark_main",
-  /* 12 */ "major/mark_weak1",
-  /* 13 */ "major/mark_weak2",
-  /* 14 */ "major/mark_final",
+  /* 10 */  "major/mark_roots",
+  /* 11 */  "major/mark_main",
+  /* 12 */  "major/mark_weak1",
+  /* 13 */  "major/mark_weak2",
+  /* 14 */  "major/mark_final",
 };
 #endif
 
@@ -465,8 +483,9 @@ static char *mark_slice_name[] = {
  */
 intnat caml_major_collection_slice (intnat howmuch)
 {
-  double p, dp;
+  double p, dp, filt_p;
   intnat computed_work;
+  int i;
   /*
      Free memory at the start of the GC cycle (garbage + free list) (assumed):
                  FM = caml_stat_heap_size * caml_percent_free
@@ -536,6 +555,7 @@ intnat caml_major_collection_slice (intnat howmuch)
   }
   if (p < dp) p = dp;
   if (p < caml_extra_heap_resources) p = caml_extra_heap_resources;
+  if (p > 0.4) p = 0.6;
   CAML_INSTR_INT ("major/work/extra",
                   (uintnat) (caml_extra_heap_resources * 1000000));
 
@@ -547,27 +567,31 @@ intnat caml_major_collection_slice (intnat howmuch)
                          ARCH_INTNAT_PRINTF_FORMAT "uu\n",
                    (uintnat) (caml_extra_heap_resources * 1000000));
   caml_gc_message (0x40, "raw work-to-do = %"
-                         ARCH_INTNAT_PRINTF_FORMAT "uu\n",
-                   (uintnat) (p * 1000000));
+                         ARCH_INTNAT_PRINTF_FORMAT "du\n",
+                   (intnat) (p * 1000000));
 
-  /* add this "work to do" to the backlog counter */
-  caml_major_backlog += p;
+  for (i = 0; i < caml_major_window; i++){
+    ring[i] += p / caml_major_window;
+  }
   if (howmuch == -1){
     /* naturally-triggered GC */
-    /* compute the new "work to do" based on backlog and history */
-    p = 0.1 * caml_major_backlog + 0.1 * caml_major_backlog_history;
+    filt_p = ring[ring_index];
+    ring[ring_index] = 0;
+    ++ring_index;
+    if (ring_index >= caml_major_window) ring_index = 0;
   }else if (howmuch == 0){
-    /* forced GC, automatic computation of work */
-    p = caml_major_backlog + (0.1 / 0.1) * caml_major_backlog_history;
+    /* forced GC */
+    filt_p = ring[ring_index];
+    ring[ring_index] = 0;
   }else{
     /* forced GC, manual setting of work */
-    p = (double) howmuch * 3.0 * (100 + caml_percent_free)
+    filt_p = (double) howmuch * 3.0 * (100 + caml_percent_free)
         / Wsize_bsize (caml_stat_heap_size) / caml_percent_free / 2.0;
   }
 
   caml_gc_message (0x40, "filtered work-to-do = %"
-                         ARCH_INTNAT_PRINTF_FORMAT "uu\n",
-                   (uintnat) (p * 1000000));
+                         ARCH_INTNAT_PRINTF_FORMAT "du\n",
+                   (intnat) (filt_p * 1000000));
 
   if (caml_gc_phase == Phase_idle){
     start_cycle ();
@@ -580,6 +604,8 @@ intnat caml_major_collection_slice (intnat howmuch)
     p = 0;
     goto finished;
   }
+
+  p = filt_p;
 
   if (caml_gc_phase == Phase_mark){
     computed_work = (intnat) (p * (Wsize_bsize (caml_stat_heap_size) * 250
@@ -615,12 +641,13 @@ intnat caml_major_collection_slice (intnat howmuch)
 
  finished:
   caml_gc_message (0x40, "work-done = %"
-                         ARCH_INTNAT_PRINTF_FORMAT "uu\n",
-                   (uintnat) (p * 1000000));
-  /* adjust backlog based on work actually done */
-  caml_major_backlog -= p;
-  /* adjust history unless forced GC */
-  if (howmuch == -1) caml_major_backlog_history += caml_major_backlog;
+                         ARCH_INTNAT_PRINTF_FORMAT "du\n",
+                   (intnat) (p * 1000000));
+
+  /* push back work not done into the window */
+  p = filt_p - p;
+  for (i = 0; i < caml_major_window; i++) ring[i] += p / caml_major_window;
+
   caml_stat_major_words += caml_allocated_words;
   caml_allocated_words = 0;
   caml_dependent_allocated = 0;
@@ -628,7 +655,7 @@ intnat caml_major_collection_slice (intnat howmuch)
   return (intnat) (0.1 * caml_major_backlog + 0.1 * caml_major_backlog_history);
 }
 
-/* This does not call [caml_compact_heap_maybe] because the estimations of
+/* This does not call [caml_compact_heap_maybe] because the estimates of
    free and live memory are only valid for a cycle done incrementally.
    Besides, this function itself is called by [caml_compact_heap_maybe].
 */
@@ -684,6 +711,8 @@ asize_t caml_round_heap_chunk_size (asize_t request)
 
 void caml_init_major_heap (asize_t heap_size)
 {
+  int i;
+
   caml_stat_heap_size = clip_heap_chunk_size (heap_size);
   caml_stat_top_heap_size = caml_stat_heap_size;
   Assert (caml_stat_heap_size % Page_size == 0);
@@ -712,4 +741,5 @@ void caml_init_major_heap (asize_t heap_size)
   heap_is_pure = 1;
   caml_allocated_words = 0;
   caml_extra_heap_resources = 0.0;
+  for (i = 0; i < Max_major_window; i++) ring[i] = 0.0;
 }
