@@ -521,10 +521,9 @@ CAMLprim value caml_gc_compaction(value v)
   return Val_unit;
 }
 
-CAMLprim value caml_gc_get_minor_free (value v)
+CAMLprim value caml_get_minor_free (value v)
 {
-  CAMLassert (v == Val_unit);
-  return Val_long (caml_young_ptr - caml_young_alloc_start);
+  return Val_int (caml_young_ptr - caml_young_alloc_start);
 }
 
 uintnat caml_normalize_heap_increment (uintnat i)

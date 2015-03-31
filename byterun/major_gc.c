@@ -181,10 +181,6 @@ static void mark_slice (intnat work)
 #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
   int marking_closure = 0;
 #endif
-#ifdef CAML_INSTR
-  int slice_fields = 0;
-  int slice_pointers = 0;
-#endif
 
   if (caml_major_slice_begin_hook != NULL) (*caml_major_slice_begin_hook) ();
   caml_gc_message (0x40, "Marking %ld words\n", work);
@@ -209,8 +205,9 @@ static void mark_slice (intnat work)
       if (Tag_hd (hd) < No_scan_tag){
         end = (size - start < work) ? size : (start + work);
         CAMLassert (end > start);
+        INSTR (if (size - end > 0)
+                 CAML_INSTR_INT ("major/mark/slice/remain", size - end);)
         for (i = start; i < end; i++){
-          INSTR (slice_fields += end - start;)
           child = Field (v, i);
 #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
           if (Is_block (child)
@@ -226,7 +223,6 @@ static void mark_slice (intnat work)
 #else
           if (Is_block (child) && Is_in_heap (child)) {
 #endif
-            INSTR (++ slice_pointers;)
             chd = Hd_val (child);
             if (Tag_hd (chd) == Forward_tag){
               value f = Forward_val (child);
@@ -255,8 +251,8 @@ static void mark_slice (intnat work)
           }
         }
         if (end < size){
-          start = end;
           work = 0;
+          start = end;
           /* [v] doesn't change. */
           CAMLassert (Is_gray_val (v));
         }else{
@@ -405,8 +401,6 @@ static void mark_slice (intnat work)
   current_value = v;
   current_index = start;
   if (caml_major_slice_end_hook != NULL) (*caml_major_slice_end_hook) ();
-  INSTR (CAML_INSTR_INT ("major/mark/slice/fields", slice_fields);)
-  INSTR (CAML_INSTR_INT ("major/mark/slice/pointers", slice_pointers);)
 }
 
 static void sweep_slice (intnat work)
@@ -483,7 +477,7 @@ static char *mark_slice_name[] = {
  */
 intnat caml_major_collection_slice (intnat howmuch)
 {
-  double p, dp, filt_p;
+  double p, dp, filt_p, remaining_p = 0;
   intnat computed_work;
   int i;
   /*
@@ -556,7 +550,7 @@ intnat caml_major_collection_slice (intnat howmuch)
   if (p < dp) p = dp;
   if (p < caml_extra_heap_resources) p = caml_extra_heap_resources;
   if (p > 0.4) p = 0.6;
-  CAML_INSTR_INT ("major/work/extra",
+  CAML_INSTR_INT ("major/work/extra#",
                   (uintnat) (caml_extra_heap_resources * 1000000));
 
   caml_gc_message (0x40, "ordered work = %ld words\n", howmuch);
@@ -616,14 +610,19 @@ intnat caml_major_collection_slice (intnat howmuch)
   }
   caml_gc_message (0x40, "computed work = %ld words\n", computed_work);
   if (caml_gc_phase == Phase_mark){
-    CAML_INSTR_INT ("major/work/mark", computed_work);
+    CAML_INSTR_INT ("major/work/mark#", computed_work);
     mark_slice (computed_work);
     CAML_INSTR_TIME (tmr, mark_slice_name[caml_gc_subphase]);
     caml_gc_message (0x02, "!", 0);
+    /*
+    remaining_p = remaining_work / (Wsize_bsize (caml_stat_heap_size) * 250
+                                    / (100 + caml_percent_free)
+                                    + caml_incremental_roots_count);
+    */
   }else{
     Assert (caml_gc_phase == Phase_sweep);
     if (caml_minor_marking_counter == 0){
-      CAML_INSTR_INT ("major/work/sweep", computed_work);
+      CAML_INSTR_INT ("major/work/sweep#", computed_work);
       sweep_slice (computed_work);
       CAML_INSTR_TIME (tmr, "major/sweep");
       caml_gc_message (0x02, "$", 0);
@@ -645,7 +644,7 @@ intnat caml_major_collection_slice (intnat howmuch)
                    (intnat) (p * 1000000));
 
   /* push back work not done into the window */
-  p = filt_p - p;
+  p = filt_p - p + remaining_p;
   for (i = 0; i < caml_major_window; i++) ring[i] += p / caml_major_window;
 
   caml_stat_major_words += caml_allocated_words;

@@ -176,7 +176,7 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
   full_wsz = alloc_wsz + aging_wsz;
 
   if (caml_young_ptr != caml_young_alloc_end){
-    CAML_INSTR_EVENT ("force_minor/set_minor_heap_size");
+    CAML_INSTR_EVENT ("force_minor/set_minor_heap_size", 1);
     caml_minor_collection_empty ();
     caml_young_trigger = caml_young_alloc_mid;
     caml_young_limit = caml_young_trigger;
@@ -544,7 +544,7 @@ static void clean_minor_heap (void)
       if (caml_minor_marking_counter > 0) --caml_minor_marking_counter;
     }
     caml_stat_promoted_words += caml_allocated_words - prev_alloc_words;
-    CAML_INSTR_INT ("minor/promoted", caml_allocated_words - prev_alloc_words);
+    CAML_INSTR_INT ("minor/promoted#", caml_allocated_words - prev_alloc_words);
 #ifdef DEBUG
     caml_gc_debug_message (0x1000, "words promoted: %lu\n",
                            caml_allocated_words - prev_alloc_words);
@@ -662,7 +662,7 @@ CAMLexport value caml_check_urgent_gc (value extra_root)
 {
   CAMLparam1 (extra_root);
   if (caml_requested_major_slice || caml_requested_minor_gc){
-    CAML_INSTR_EVENT ("force_minor/check_urgent_gc");
+    CAML_INSTR_EVENT ("force_minor/check_urgent_gc", 1);
     caml_gc_dispatch();
   }
   CAMLreturn (extra_root);
@@ -676,7 +676,7 @@ void caml_realloc_ref_table (struct caml_ref_table *tbl)
   if (tbl->base == NULL){
     caml_alloc_table (tbl, caml_minor_heap_wsz / 8, 256);
   }else if (tbl->limit == tbl->threshold){
-    CAML_INSTR_EVENT ("request_minor/realloc_ref_table");
+    CAML_INSTR_EVENT ("request_minor/realloc_ref_table", 1);
     caml_gc_message (0x08, "ref_table threshold crossed\n", 0);
     tbl->limit = tbl->end;
     caml_request_minor_gc ();
