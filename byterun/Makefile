@@ -27,9 +27,12 @@ SHARED_LIBS_DEPS=$(SHARED_LIBS_TMP:%true=libcamlrun_shared.so)
 
 all:: $(SHARED_LIBS_DEPS)
 
-ocamlrun$(EXE): libcamlrun.a prims.o
-	$(MKEXE) $(BYTECCLINKOPTS) -o ocamlrun$(EXE) \
-		  prims.o libcamlrun.a $(BYTECCLIBS)
+#ocamlrun$(EXE): libcamlrun.a prims.o
+#	$(MKEXE) $(BYTECCLINKOPTS) -o ocamlrun$(EXE) \
+#		  prims.o libcamlrun.a $(BYTECCLIBS)
+
+ocamlrun$(EXE): ocamlrund$(EXE)
+	cp $< $@
 
 ocamlrund$(EXE): libcamlrund.a prims.o
 	$(MKEXE) $(MKEXEDEBUGFLAG) $(BYTECCLINKOPTS) -o ocamlrund$(EXE) \
@@ -63,9 +66,7 @@ clean::
 .SUFFIXES: .d.o .i.o .pic.o
 
 .c.d.o:
-	ln -s -f $*.c $*.d.c
-	$(CC) -c $(DFLAGS) $*.d.c
-	rm $*.d.c
+	$(CC) -c $(DFLAGS) -o $@ $<
 
 %.i.o: %.c
 	$(CC) -c $(TFLAGS) -o $@ $<

@@ -137,6 +137,7 @@ bits  63    10 9     8 7   0
 #define Whsize_hd(hd) (Whsize_wosize (Wosize_hd (hd)))
 #define Bhsize_hp(hp) (Bsize_wsize (Whsize_hp (hp)))
 #define Bhsize_hd(hd) (Bsize_wsize (Whsize_hd (hd)))
+#define Bhsize_bp(bp) (Bsize_wsize (Whsize_bp (bp)))
 
 #ifdef ARCH_BIG_ENDIAN
 #define Tag_val(val) (((unsigned char *) (val)) [-1])

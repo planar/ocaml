@@ -228,12 +228,15 @@ char *caml_alloc_for_heap (asize_t request)
   char *mem;
   void *block;
                                               Assert (request % Page_size == 0);
-  mem = caml_aligned_malloc (request + sizeof (heap_chunk_head),
+  mem = caml_aligned_malloc (request
+                             + sizeof (heap_chunk_head)
+                             + sizeof (header_t),
                              sizeof (heap_chunk_head), &block);
   if (mem == NULL) return NULL;
   mem += sizeof (heap_chunk_head);
   Chunk_size (mem) = request;
   Chunk_block (mem) = block;
+  * (header_t *) (mem + request) = Make_header (0, 0, Caml_black);
   return mem;
 }
 
