@@ -14,6 +14,7 @@
 #include "alloc.h"
 #include "compact.h"
 #include "custom.h"
+#include "fail.h"
 #include "finalise.h"
 #include "freelist.h"
 #include "gc.h"
@@ -502,7 +503,7 @@ CAMLprim value caml_gc_major_slice (value v)
   caml_request_major_slice ();
   caml_gc_dispatch ();
   CAML_INSTR_TIME (tmr, "explicit/gc_major_slice");
-  return Val_long (0);  /* FIXME TODO return work estimate */
+  return Val_long (0);
 }
 
 CAMLprim value caml_gc_compaction(value v)
@@ -524,6 +525,26 @@ CAMLprim value caml_gc_compaction(value v)
 CAMLprim value caml_get_minor_free (value v)
 {
   return Val_int (caml_young_ptr - caml_young_alloc_start);
+}
+
+CAMLprim value caml_get_major_bucket (value v)
+{
+  long i = Long_val (v);
+  if (i < 0) caml_invalid_argument ("Gc.get_bucket");
+  if (i < caml_major_window){
+    i += caml_major_ring_index;
+    if (i >= caml_major_window) i -= caml_major_window;
+    CAMLassert (0 <= i && i < caml_major_window);
+    return Val_long ((long) (caml_major_ring[i] * 1e6));
+  }else{
+    return Val_long (0);
+  }
+}
+
+CAMLprim value caml_get_major_credit (value v)
+{
+  CAMLassert (v == Val_unit);
+  return Val_long ((long) (caml_major_work_credit * 1e6));
 }
 
 uintnat caml_normalize_heap_increment (uintnat i)
