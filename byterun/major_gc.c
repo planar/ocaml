@@ -37,6 +37,7 @@ uintnat caml_percent_free;
 uintnat caml_major_heap_increment;
 CAMLexport char *caml_heap_start;
 char *caml_gc_sweep_hp;
+static char *caml_gc_sweep_counted;
 mlsize_t caml_gc_sweep_prev_wosz;
 int caml_gc_phase;        /* always Phase_mark, Phase_sweep, or Phase_idle */
 static value *gray_vals;
@@ -50,7 +51,6 @@ double caml_extra_heap_resources;
 uintnat caml_fl_size_at_phase_change = 0;
 
 extern char *caml_fl_merge [];   /* Defined in freelist.c. */
-extern char *caml_fl_merge_prev; /* Defined in freelist.c. */
 extern int caml_fl_small_max;    /* Defined in freelist.c. */
 
 static char *markhp, *chunk, *limit;
@@ -317,7 +317,7 @@ static void mark_slice (intnat work)
       case Subphase_final: {
         /* Initialise the sweep phase. */
         gray_vals_cur = gray_vals_ptr;
-        caml_gc_sweep_hp = caml_heap_start;
+        caml_gc_sweep_hp = caml_gc_sweep_counted = caml_heap_start;
         caml_gc_sweep_prev_wosz = 0;
         caml_fl_init_merge ();
         caml_gc_phase = Phase_sweep;
@@ -338,7 +338,7 @@ static void mark_slice (intnat work)
 
 static void sweep_slice (intnat work)
 {
-  char *hp, *new_merge_prev;
+  char *hp;
   header_t hd;
 
   if (caml_major_slice_begin_hook != NULL) (*caml_major_slice_begin_hook) ();
@@ -347,37 +347,48 @@ static void sweep_slice (intnat work)
     if (caml_gc_sweep_hp < limit){
       hp = caml_gc_sweep_hp;
       hd = Hd_hp (hp);
-      work -= Whsize_hd (hd);
-      caml_gc_sweep_hp += Bhsize_hd (hd);
       switch (Color_hd (hd)){
       case Caml_white:
         if (Tag_hd (hd) == Custom_tag){
           void (*final_fun)(value) = Custom_ops_val(Val_hp(hp))->finalize;
           if (final_fun != NULL) final_fun(Val_hp(hp));
         }
-        new_merge_prev = caml_fl_merge_block (Bp_hp (hp));
-        caml_gc_sweep_hp = new_merge_prev + Bosize_bp (new_merge_prev);
-        break;
+        caml_fl_merge_block (Bp_hp (hp), limit);
+        hd = Hd_hp (hp);  /* set [hd] to correct value for fall through */
+        if (Wosize_hd(hd) == 0){
+          /* This is a fragment. */
+          caml_gc_sweep_hp += Bhsize_wosize (0);
+          break;
+        }
+        /* FALL THROUGH */
       case Caml_blue:
-        new_merge_prev = Bp_hp (hp);
+        hp += Bhsize_hd (hd);
+        if (caml_gc_sweep_counted < hp){
+          work -= Wsize_bsize (hp - caml_gc_sweep_hp);
+        }
+        if (hp < limit &&  Color_hp (hp) == Caml_white){
+          work -= Whsize_hp (hp);
+          if (Tag_hp (hp) == Custom_tag){
+            void (*final_fun)(value) = Custom_ops_val(Val_hp(hp))->finalize;
+            if (final_fun != NULL) final_fun(Val_hp(hp));
+          }
+          caml_gc_sweep_counted = caml_gc_sweep_hp;
+          caml_gc_sweep_hp = caml_fl_extend_block (Bp_hp (caml_gc_sweep_hp));
+        }else{
+          mlsize_t wosz = Wosize_hd (hd);
+          int list = wosz > caml_fl_small_max ? 0 : wosz;
+          CAMLassert (wosz > 0);
+          caml_fl_merge[list] = Bp_hp (caml_gc_sweep_hp);
+          caml_gc_sweep_hp = hp;
+        }
         break;
       default:          /* gray or black */
         Assert (Color_hd (hd) == Caml_black);
         Hd_hp (hp) = Whitehd_hd (hd);
-        new_merge_prev = NULL;
+        work -= Whsize_hd (hd);
+        caml_gc_sweep_hp = hp + Bhsize_hd (hd);
         break;
       }
-      CAMLassert (new_merge_prev == NULL
-                  || Wosize_bp (new_merge_prev) == 0
-                  || Color_bp (new_merge_prev) == Caml_blue);
-      if (caml_fl_merge_prev != NULL && new_merge_prev != caml_fl_merge_prev){
-        mlsize_t wosz = Wosize_bp (caml_fl_merge_prev);
-        if (wosz > 0){
-          int list = wosz > caml_fl_small_max ? 0 : wosz;
-          caml_fl_merge[list] = caml_fl_merge_prev;
-        }
-      }
-      caml_fl_merge_prev = new_merge_prev;
       Assert (caml_gc_sweep_hp <= limit);
     }else{
       chunk = Chunk_next (chunk);

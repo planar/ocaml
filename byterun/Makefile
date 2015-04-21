@@ -13,7 +13,7 @@
 
 include Makefile.common
 
-CFLAGS=-DCAML_NAME_SPACE -O $(BYTECCCOMPOPTS) $(IFLEXDIR) -Werror
+CFLAGS=-DCAML_NAME_SPACE -O $(BYTECCCOMPOPTS) $(IFLEXDIR)
 DFLAGS=-DCAML_NAME_SPACE -g -DDEBUG $(BYTECCCOMPOPTS) $(IFLEXDIR)
 IFLAGS=$(CFLAGS) -DCAML_INSTR
 
@@ -27,12 +27,9 @@ SHARED_LIBS_DEPS=$(SHARED_LIBS_TMP:%true=libcamlrun_shared.so)
 
 all:: $(SHARED_LIBS_DEPS)
 
-#ocamlrun$(EXE): libcamlrun.a prims.o
-#	$(MKEXE) $(BYTECCLINKOPTS) -o ocamlrun$(EXE) \
-#		  prims.o libcamlrun.a $(BYTECCLIBS)
-
-ocamlrun$(EXE): ocamlrund$(EXE)
-	cp $< $@
+ocamlrun$(EXE): libcamlrun.a prims.o
+	$(MKEXE) $(BYTECCLINKOPTS) -o ocamlrun$(EXE) \
+		  prims.o libcamlrun.a $(BYTECCLIBS)
 
 ocamlrund$(EXE): libcamlrund.a prims.o
 	$(MKEXE) $(MKEXEDEBUGFLAG) $(BYTECCLINKOPTS) -o ocamlrund$(EXE) \

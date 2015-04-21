@@ -84,7 +84,6 @@ static char *fl_last = NULL;
 
 /* Current insertion pointers. Managed jointly with [sweep_slice]. */
 char *caml_fl_merge[NUM_FREE_LISTS];
-char *caml_fl_merge_prev = NULL;
 
 /* Number of words in the free lists, including headers but not fragments. */
 asize_t caml_fl_cur_size = 0;
@@ -120,6 +119,7 @@ static void fl_check (void)
       size_found += Whsize_bp (cur);
       Assert (Is_in_heap (cur));
       if (list == 0){
+        CAMLassert (prev == Fl_head(0) || cur == NULL || cur > prev);
         if (cur == fl_prev) prev_found = 1;
         if (policy == Policy_first_fit && Wosize_bp (cur) > sz){
           sz = Wosize_bp (cur);
@@ -180,9 +180,8 @@ static char *allocate_block (mlsize_t wh_sz, int flpi, char *prev, char *cur)
   if (cur_wosz < wh_sz + 1){                        /* Cases 0 and 1. */
     caml_fl_cur_size -= Whsize_wosize (cur_wosz);
     Next (prev) = Next (cur);
-                    Assert (Is_in_heap (Next (prev)) || Next (prev) == NULL);
+    CAMLassert (Is_in_heap (Next (prev)) || Next (prev) == NULL);
     if (caml_fl_merge[list] == cur) caml_fl_merge[list] = prev;
-    if (caml_fl_merge_prev == cur) caml_fl_merge_prev = NULL;
 #ifdef DEBUG
     fl_last = NULL;
 #endif
@@ -205,12 +204,11 @@ static char *allocate_block (mlsize_t wh_sz, int flpi, char *prev, char *cur)
       Hd_op (cur) = Make_header (remwosz, 0, Caml_blue);
     }else{
       if (caml_fl_merge[0] == cur) caml_fl_merge[0] = prev;
+      if (fl_prev == cur) fl_prev = prev;
       Next (prev) = Next (cur);
-      if (fl_prev == cur) fl_prev = Next (fl_prev);
       Hd_op (cur) = Make_header (remwosz, Abstract_tag, Caml_white);
       if (caml_gc_phase == Phase_sweep){
         /* Do not insert into free list */
-        if (caml_fl_merge_prev == cur) caml_fl_merge_prev = NULL;
         caml_fl_cur_size -= Whsize_wosize (remwosz);
 #ifdef DEBUG
         Next (cur) = NULL;
@@ -241,7 +239,6 @@ char *caml_fl_allocate (mlsize_t wo_sz)
     if (result != NULL){
       Next (Fl_head (wo_sz)) = Next (result);
       caml_fl_cur_size -= Whsize_wosize (wo_sz);
-      if (result == caml_fl_merge_prev) caml_fl_merge_prev = NULL;
       if (result == caml_fl_merge[wo_sz]){
         caml_fl_merge[wo_sz] = Fl_head (wo_sz);
       }
@@ -464,13 +461,14 @@ void caml_fl_reset (void)
   caml_fl_init_merge ();
 }
 
-/* [caml_fl_merge_block] returns a pointer to the current block, which
-   may have moved because of merging.
+/* Insert the given block into the free-list, merging it with the
+   next block if appropriate.
+   Return the head pointer to the next block (after merging).
 */
-char *caml_fl_merge_block (char *bp)
+char *caml_fl_merge_block (char *bp, char *limit)
 {
   char *right, *prev;
-  mlsize_t wosz = Wosize_bp (bp), new_wosz, left_wosz;
+  mlsize_t wosz = Wosize_bp (bp), new_wosz;
   int list;
 
   caml_fl_cur_size += Whsize_wosize (wosz);
@@ -481,62 +479,78 @@ char *caml_fl_merge_block (char *bp)
   caml_set_fields (bp, 0, Debug_free_major);
 #endif
 
-  if (caml_fl_merge_prev != NULL
-      && caml_fl_merge_prev + Bhsize_bp (caml_fl_merge_prev) == bp){
-    /* The block to the left is free, merge it. */
-    left_wosz = Wosize_bp (caml_fl_merge_prev);
-    new_wosz = wosz + Whsize_wosize (left_wosz);
-    if (new_wosz <= Max_wosize){
-#ifdef DEBUG
-      Hd_bp (bp) = Debug_free_major;
-#endif
-      if (Color_bp (caml_fl_merge_prev) == Caml_blue){
-        /* remove it from its free list */
-        list = (left_wosz > caml_fl_small_max) ? 0 : left_wosz;
-        prev = caml_fl_merge[list];
-        CAMLassert (Next (prev) == caml_fl_merge_prev);
-        Next (prev) = Next (caml_fl_merge_prev);
-      }else{
-        CAMLassert (left_wosz == 0);
-        ++ caml_fl_cur_size;
-      }
-      wosz = new_wosz;
-      bp = caml_fl_merge_prev;
-      caml_fl_merge_prev = NULL;
-    }
-  }
-
   right = bp + Bhsize_wosize (wosz);
-  if (Color_bp (right) == Caml_blue){
-    /* If the right block is in a free list, remove it and merge it. */
+  if (right < limit){
     int right_wosz = Wosize_bp (right);
-    list = (right_wosz > caml_fl_small_max) ? 0 : right_wosz;
-    prev = caml_fl_merge[list];
-    CAMLassert (Next (prev) == right);
-    new_wosz = wosz + Whsize_wosize (right_wosz);
-    if (new_wosz <= Max_wosize){
-      Next (prev) = Next (right);
-      wosz = new_wosz;
+    if (Color_bp (right) == Caml_blue){
+      /* The next block is in a free list, remove it and merge it. */
+      list = (right_wosz > caml_fl_small_max) ? 0 : right_wosz;
+      prev = caml_fl_merge[list];
+      CAMLassert (Next (prev) == right);
+      new_wosz = wosz + Whsize_wosize (right_wosz);
+      if (new_wosz <= Max_wosize){
+        Next (prev) = Next (right);
+        if (fl_prev == right) fl_prev = prev;
+        wosz = new_wosz;
+      }
+    }else if (right_wosz == 0){
+      /* The next block is a fragment, merge it. */
+      new_wosz = wosz + Whsize_wosize (0);
+      if (new_wosz <= Max_wosize){
+        caml_fl_cur_size += Whsize_wosize (0);
+        wosz = new_wosz;
+      }
     }
   }
 
   if (wosz > 0){
-    char *nextprev;
     /* Set the correct header and insert in the correct free list */
+    Hd_bp (bp) = Make_header (wosz, 0, Caml_blue);
     list = (wosz > caml_fl_small_max) ? 0 : wosz;
-    Hd_bp (bp) = Make_header (wosz, Abstract_tag, Caml_blue);
     prev = caml_fl_merge[list];
-    nextprev = Next (prev);
-    if (nextprev != NULL && nextprev == caml_fl_merge_prev){
-      prev = caml_fl_merge_prev;
-    }
-    Next (bp) = Next (prev); /* /!\ not [nextprev] */
+    Next (bp) = Next (prev);
     Next (prev) = bp;
   }else{
     /* If wosz == 0, this is a fragment. Leave it in white. */
     caml_fl_cur_size -= Whsize_wosize (0);
   }
-  return bp;
+  return bp + Bsize_wsize (wosz);
+}
+
+/* The given block is in a free list and the next one is white.
+   Merge them and move them to another free list if appropriate.
+   Return the current block if merging took place, the white
+   block otherwise.
+*/
+char *caml_fl_extend_block (char *bp)
+{
+  mlsize_t wosz = Wosize_bp (bp);
+  int list = wosz > caml_fl_small_max ? 0 : wosz;
+  char *next = bp + Bhsize_bp (bp);
+  mlsize_t next_whsz = Whsize_bp (next);
+  mlsize_t new_wosz;
+
+  CAMLassert (Color_bp (next) == Caml_white);
+  caml_fl_cur_size += next_whsz;
+  new_wosz = wosz + next_whsz;
+  if (new_wosz <= Max_wosize){
+    Hd_bp (bp) = Make_header (new_wosz, 0, Caml_blue);
+    if (list > 0){
+      /* remove from old free list */
+      char *prev = caml_fl_merge[list];
+      CAMLassert (Next (prev) == bp);
+      Next (prev) = Next (Next (prev));
+      /* insert in new free list */
+      list = new_wosz > caml_fl_small_max ? 0 : new_wosz;
+      prev = caml_fl_merge[list];
+      Next (bp) = Next (prev);
+      Next (prev) = bp;
+    }
+    return Hp_bp (bp);
+  }else{
+    caml_fl_merge[0] = bp;
+    return bp + Bsize_wsize (wosz);
+  }
 }
 
 /* This is a heap extension.  We have to insert it in the right place
@@ -589,10 +603,13 @@ void caml_fl_add_blocks (char *bp)
     }
     if (policy == Policy_first_fit) truncate_flp (bp);
   }
+#ifdef DEBUG
+  fl_check ();
+#endif
 }
 
 /* Cut a block of memory into Max_wosize pieces, give them headers,
-   and optionally merge them into the free list.
+   and optionally merge them into the free lists.
    arguments:
    p: pointer to the first word of the block
    size: size of the block (in words)
@@ -603,21 +620,24 @@ void caml_fl_add_blocks (char *bp)
 */
 void caml_make_free_blocks (value *p, mlsize_t size, int do_merge, int color)
 {
-  mlsize_t sz;
+  mlsize_t whsz, wosz;
+  int list;
 
   while (size > 0){
     if (size > Whsize_wosize (Max_wosize)){
-      sz = Whsize_wosize (Max_wosize);
+      whsz = Whsize_wosize (Max_wosize);
     }else{
-      sz = size;
+      whsz = size;
     }
-    *(header_t *)p = Make_header (Wosize_whsize (sz), 0, color);
+    wosz = Wosize_whsize (whsz);
+    *(header_t *)p = Make_header (wosz, 0, color);
     if (do_merge){
-      caml_fl_merge_prev = NULL;
-      caml_fl_merge_block (Bp_hp (p));
+      caml_fl_merge_block (Bp_hp (p), (char *) (p + size));
     }
-    size -= sz;
-    p += sz;
+    list = wosz > caml_fl_small_max ? 0 : wosz;
+    caml_fl_merge[list] = Bp_hp (p);
+    size -= whsz;
+    p += whsz;
   }
 }
 
