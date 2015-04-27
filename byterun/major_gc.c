@@ -373,16 +373,17 @@ static void sweep_slice (intnat work)
         /* FALL THROUGH */
       case Caml_blue:
         hp += Bhsize_hd (hd);
-        if (caml_gc_sweep_counted < hp){
+        if (caml_gc_sweep_counted < caml_gc_sweep_hp){
           work -= Wsize_bsize (hp - caml_gc_sweep_hp);
+          caml_gc_sweep_counted = caml_gc_sweep_hp;
         }
         if (hp < limit &&  Color_hp (hp) == Caml_white){
-          work -= Whsize_hp (hp);
           if (Tag_hp (hp) == Custom_tag){
             void (*final_fun)(value) = Custom_ops_val(Val_hp(hp))->finalize;
             if (final_fun != NULL) final_fun(Val_hp(hp));
           }
-          caml_gc_sweep_counted = caml_gc_sweep_hp;
+          work -= Whsize_hp (hp);
+          caml_gc_sweep_counted = hp;
           caml_gc_sweep_hp = caml_fl_extend_block (Bp_hp (caml_gc_sweep_hp));
         }else{
           mlsize_t wosz = Wosize_hd (hd);
