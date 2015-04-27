@@ -223,6 +223,33 @@ static char *allocate_block (mlsize_t wh_sz, int flpi, char *prev, char *cur)
   return cur + Bsize_wsize (cur_wosz - wh_sz);
 }
 
+#ifdef CAML_INSTR
+static uintnat instr_size [20] =
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static char *instr_name [20] = {
+  NULL,
+  "alloc01@",
+  "alloc02@",
+  "alloc03@",
+  "alloc04@",
+  "alloc05@",
+  "alloc06@",
+  "alloc07@",
+  "alloc08@",
+  "alloc09@",
+  "alloc10-19@",
+  "alloc20-29@",
+  "alloc30-39@",
+  "alloc40-49@",
+  "alloc50-59@",
+  "alloc60-69@",
+  "alloc70-79@",
+  "alloc80-89@",
+  "alloc90-99@",
+  "alloc_large@",
+};
+#endif /*CAML_INSTR*/
+
 /* [caml_fl_allocate] does not set the header of the newly allocated block.
    The calling function must do it before any GC function gets called.
    [caml_fl_allocate] returns a head pointer.
@@ -234,6 +261,16 @@ char *caml_fl_allocate (mlsize_t wo_sz)
   mlsize_t sz, prevsz;
                                   Assert (sizeof (char *) == sizeof (value));
                                   Assert (wo_sz >= 1);
+#ifdef CAML_INSTR
+  if (wo_sz < 10){
+    ++instr_size[wo_sz];
+  }else if (wo_sz < 100){
+    ++instr_size[wo_sz/10 + 9];
+  }else{
+    ++instr_size[19];
+  }
+#endif /* CAML_INSTR */
+
   if (wo_sz <= caml_fl_small_max){
     result = Next (Fl_head (wo_sz));
     if (result != NULL){
@@ -247,6 +284,7 @@ char *caml_fl_allocate (mlsize_t wo_sz)
     /* Fall through to generic allocation. We could also try to allocate
        from another small free-list of larger size. */
   }
+
   switch (policy){
   case Policy_next_fit:
                                   Assert (fl_prev != NULL);
@@ -415,6 +453,14 @@ char *caml_fl_allocate (mlsize_t wo_sz)
 void caml_fl_init_merge (void)
 {
   int i;
+
+#ifdef CAML_INSTR
+  for (i = 1; i < 20; i++){
+    CAML_INSTR_INT (instr_name[i], instr_size[i]);
+    instr_size[i] = 0;
+  }
+#endif /* CAML_INSTR */
+
   for (i = 1; i <= caml_fl_small_max; i++){
     while (Next (Fl_head (i)) != NULL && Is_white_val (Next (Fl_head (i)))){
       Next (Fl_head (i)) = Next (Next (Fl_head (i)));
@@ -423,6 +469,7 @@ void caml_fl_init_merge (void)
     caml_fl_merge[i] = Fl_head (i);
   }
   caml_fl_merge[0] = Fl_head (0);
+
 #ifdef DEBUG
   fl_check ();
 #endif
@@ -615,8 +662,7 @@ void caml_fl_add_blocks (char *bp)
    size: size of the block (in words)
    do_merge: 1 -> do merge; 0 -> do not merge
    color: which color to give to the pieces; if [do_merge] is 1, this
-          is overridden by the merge code, but we have historically used
-          [Caml_white].
+          must be [Caml_white].
 */
 void caml_make_free_blocks (value *p, mlsize_t size, int do_merge, int color)
 {
@@ -630,12 +676,14 @@ void caml_make_free_blocks (value *p, mlsize_t size, int do_merge, int color)
       whsz = size;
     }
     wosz = Wosize_whsize (whsz);
-    *(header_t *)p = Make_header (wosz, 0, color);
+    Hd_hp (p) = Make_header (wosz, 0, color);
     if (do_merge){
-      caml_fl_merge_block (Bp_hp (p), (char *) (p + size));
+      caml_fl_merge_block (Bp_hp (p), (char *) (p + whsz));
     }
-    list = wosz > caml_fl_small_max ? 0 : wosz;
-    caml_fl_merge[list] = Bp_hp (p);
+    if (wosz > 0){
+      list = wosz > caml_fl_small_max ? 0 : wosz;
+      caml_fl_merge[list] = Bp_hp (p);
+    }
     size -= whsz;
     p += whsz;
   }
