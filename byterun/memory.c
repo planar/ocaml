@@ -236,7 +236,6 @@ char *caml_alloc_for_heap (asize_t request)
   mem += sizeof (heap_chunk_head);
   Chunk_size (mem) = request;
   Chunk_block (mem) = block;
-  * (header_t *) (mem + request) = Make_header (0, 0, Caml_black);
   return mem;
 }
 
