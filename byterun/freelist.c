@@ -248,6 +248,8 @@ static char *instr_name [20] = {
   "alloc90-99@",
   "alloc_large@",
 };
+uintnat caml_instr_alloc_fast = 0;
+uintnat caml_instr_alloc_slow = 0;
 #endif /*CAML_INSTR*/
 
 /* [caml_fl_allocate] does not set the header of the newly allocated block.
@@ -279,11 +281,18 @@ char *caml_fl_allocate (mlsize_t wo_sz)
       if (result == caml_fl_merge[wo_sz]){
         caml_fl_merge[wo_sz] = Fl_head (wo_sz);
       }
+#ifdef CAML_INSTR
+      ++ caml_instr_alloc_fast;
+#endif
       return Hp_op (result);
     }
     /* Fall through to generic allocation. We could also try to allocate
        from another small free-list of larger size. */
   }
+
+#ifdef CAML_INSTR
+      ++ caml_instr_alloc_slow;
+#endif
 
   switch (policy){
   case Policy_next_fit:
