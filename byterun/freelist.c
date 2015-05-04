@@ -250,6 +250,8 @@ static char *instr_name [20] = {
 };
 uintnat caml_instr_alloc_fast = 0;
 uintnat caml_instr_alloc_slow = 0;
+uintnat caml_instr_alloc_jump = 0;
+/* number of pointers followed to allocate from the free list */
 #endif /*CAML_INSTR*/
 
 /* [caml_fl_allocate] does not set the header of the newly allocated block.
@@ -306,6 +308,9 @@ char *caml_fl_allocate (mlsize_t wo_sz)
       }
       prev = cur;
       cur = Next (prev);
+#ifdef CAML_INSTR
+      ++ caml_instr_alloc_jump;
+#endif
     }
     fl_last = prev;
     /* Search from the start of the list to [fl_prev]. */
@@ -317,6 +322,9 @@ char *caml_fl_allocate (mlsize_t wo_sz)
       }
       prev = cur;
       cur = Next (prev);
+#ifdef CAML_INSTR
+      ++ caml_instr_alloc_jump;
+#endif
     }
     /* No suitable block was found. */
     return NULL;

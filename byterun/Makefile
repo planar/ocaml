@@ -66,7 +66,7 @@ clean::
 	$(CC) -c $(DFLAGS) -o $@ $<
 
 %.i.o: %.c
-	$(CC) -c $(TFLAGS) -o $@ $<
+	$(CC) -c $(IFLAGS) -o $@ $<
 
 .c.pic.o:
 	ln -s -f $*.c $*.pic.c

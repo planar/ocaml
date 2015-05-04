@@ -279,6 +279,7 @@ void caml_empty_minor_heap (void)
 #ifdef CAML_INSTR
 extern uintnat caml_instr_alloc_fast;
 extern uintnat caml_instr_alloc_slow;
+extern uintnat caml_instr_alloc_jump;
 #endif
 
 /* Do a minor collection and a slice of major collection, call finalisation
@@ -287,8 +288,12 @@ extern uintnat caml_instr_alloc_slow;
 */
 CAMLexport void caml_minor_collection (void)
 {
+#ifdef CAML_INSTR
   CAML_INSTR_SETUP(tmr, "coll");
   CAML_INSTR_TIME (tmr, "overhead");
+  CAML_INSTR_INT ("alloc/jump#", caml_instr_alloc_jump);
+  caml_instr_alloc_jump = 0;
+#endif
 
 #ifdef CAML_INSTR
   CAML_INSTR_INT ("alloc/fast#", caml_instr_alloc_fast);
