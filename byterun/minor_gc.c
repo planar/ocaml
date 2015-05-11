@@ -208,6 +208,7 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
   CAMLassert (caml_young_aging_end == caml_young_aging_start + aging_wsz);
   caml_minor_heap_wsz = alloc_wsz;
   caml_minor_aging_wsz = aging_wsz;
+  caml_aging_size_factor = aging_factor;
 
   reset_table (&caml_ref_table);
   reset_table (&caml_weak_ref_table);
@@ -603,6 +604,10 @@ CAMLexport void caml_minor_collection_empty (void)
   caml_minor_marking_counter = 0;
 }
 
+#ifdef CAML_INSTR
+extern uintnat caml_instr_alloc_jump;
+#endif
+
 /* Do a minor collection or a slice of major collection, call finalisation
    functions, etc.
    Leave enough room in the minor heap to allocate at least one object.
@@ -610,9 +615,12 @@ CAMLexport void caml_minor_collection_empty (void)
 CAMLexport void caml_gc_dispatch (void)
 {
   value *trigger = caml_young_trigger; /* save old value of trigger */
-
+#ifdef CAML_INSTR
   CAML_INSTR_SETUP(tmr, "dispatch");
   CAML_INSTR_TIME (tmr, "overhead");
+  CAML_INSTR_INT ("alloc/jump#", caml_instr_alloc_jump);
+  caml_instr_alloc_jump = 0;
+#endif
 
   if (trigger == caml_young_alloc_start || caml_requested_minor_gc){
     /* The minor heap is full, we must do a minor collection. */

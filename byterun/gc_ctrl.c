@@ -325,7 +325,7 @@ CAMLprim value caml_gc_get(value v)
   CAMLparam0 ();   /* v is ignored */
   CAMLlocal1 (res);
 
-  res = caml_alloc_tuple (7);
+  res = caml_alloc_tuple (10);
   Store_field (res, 0, Val_long (caml_minor_heap_wsz));                 /* s */
   Store_field (res, 1, Val_long (caml_major_heap_increment));           /* i */
   Store_field (res, 2, Val_long (caml_percent_free));                   /* o */
@@ -337,6 +337,9 @@ CAMLprim value caml_gc_get(value v)
   Store_field (res, 5, Val_long (0));
 #endif
   Store_field (res, 6, Val_long (caml_allocation_policy));              /* a */
+  Store_field (res, 7, Val_long (caml_major_window));                   /* w */
+  Store_field (res, 8, Val_long (caml_young_age_limit));                /* g */
+  Store_field (res, 9, Val_long (caml_aging_size_factor));              /* G */
   CAMLreturn (res);
 }
 
@@ -370,6 +373,13 @@ static intnat norm_age_limit (intnat l)
 {
   if (l < 0) l = 0;
   if (l > 1000) l = 1000;
+  return l;
+}
+
+static intnat norm_aging_size_factor (intnat l)
+{
+  if (l < 0) l = 0;
+  if (l > 3 * caml_young_age_limit) l = 3 * caml_young_age_limit;
   return l;
 }
 
@@ -424,17 +434,37 @@ CAMLprim value caml_gc_set(value v)
                      caml_allocation_policy);
   }
 
-  /* Minor heap size comes last because it will trigger a minor collection
-     (thus invalidating [v]) and it can raise [Out_of_memory]. */
+  if (Wosize_val (v) >= 8){  /* TODO remove this test after merging Gc_temp */
+    int old_window = caml_major_window;
+    caml_set_major_window (norm_window (Long_val (Field (v, 7))));
+    if (old_window != caml_major_window){
+      caml_gc_message (0x20, "New smoothing window size: %d\n",
+                       caml_major_window);
+    }
+  }
+
+  if (Wosize_val (v) >= 9){  /* TODO remove this test after merging Gc_temp */
+    int old_age_limit = caml_young_age_limit;
+    caml_young_age_limit = norm_age_limit (Long_val (Field (v, 8)));
+    if (old_age_limit != caml_young_age_limit){
+      caml_gc_message (0x20, "New age limit: %d\n", caml_young_age_limit);
+    }
+  }
+
+  /* Minor and intermediate heap sizes come last because they will
+     trigger a minor collection (thus invalidating [v]) and can
+     raise [Out_of_memory]. */
   newminwsz = norm_minsize (Long_val (Field (v, 0)));
-  new_aging_size_factor = caml_aging_size_factor;
-  /* new_aging_size_factor = norm_aging_size_factor (Long_val (Field (v, 7)));
-     FIXME TODO */
+  if (Wosize_val (v) >= 10){  /* TODO remove this test after merging Gc_temp */
+    new_aging_size_factor = norm_aging_size_factor (Long_val (Field (v, 9)));
+  }else{
+    new_aging_size_factor = caml_aging_size_factor;
+  }
   if (newminwsz != caml_minor_heap_wsz
       || new_aging_size_factor != caml_aging_size_factor){
     caml_gc_message (0x20, "New minor heap size: %luk words\n",
                      newminwsz/1024);
-    caml_gc_message (0x20, "New aging heap size: %luk words\n",
+    caml_gc_message (0x20, "New intermediate heap size: %luk words\n",
                      newminwsz * new_aging_size_factor / 1024);
     caml_set_minor_heap_size (newminwsz, new_aging_size_factor);
   }
