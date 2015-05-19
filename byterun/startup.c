@@ -381,6 +381,10 @@ CAMLexport void caml_main(char **argv)
   caml_external_raise = NULL;
   /* Determine options and position of bytecode file */
   parse_camlrunparam();
+#ifdef DEBUG
+  caml_gc_message (-1, "### OCaml runtime: debug mode ###\n", 0);
+#endif
+
   pos = 0;
 
   /* First, try argv[0] (when ocamlrun is called by a bytecode program) */
