@@ -62,7 +62,7 @@ clean::
 
 .SUFFIXES: .d.o .i.o .pic.o
 
-.c.d.o:
+%.d.o: %.c
 	$(CC) -c $(DFLAGS) -o $@ $<
 
 %.i.o: %.c
@@ -74,7 +74,7 @@ clean::
 	rm $*.pic.c
 
 clean::
-	rm -f *.pic.c *.d.c
+	rm -f *.pic.c
 
 depend : prims.c opnames.h jumptbl.h version.h
 	-gcc -MM $(BYTECCCOMPOPTS) *.c > .depend
