@@ -211,7 +211,7 @@ static void mark_slice (intnat work)
           child = Field (v, i);
 #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
           if (Is_block (child)
-                && !Is_young (child)
+                && ! Is_young (child)
                 && Wosize_val (child) > 0  /* Atoms never need to be marked. */
                 /* Closure blocks contain code pointers at offsets that cannot
                    be reliably determined, so we always use the page table when
