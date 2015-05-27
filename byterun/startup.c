@@ -380,6 +380,9 @@ CAMLexport void caml_main(char **argv)
   caml_ext_table_init(&caml_shared_libs_path, 8);
   caml_external_raise = NULL;
   /* Determine options and position of bytecode file */
+#ifdef DEBUG
+  caml_verb_gc = 0x3F;
+#endif
   parse_camlrunparam();
 #ifdef DEBUG
   caml_gc_message (-1, "### OCaml runtime: debug mode ###\n", 0);
