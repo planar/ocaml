@@ -140,6 +140,15 @@ type control =
         first-fit policy, which can be slower in some cases but
         can be better for programs with fragmentation problems.
         Default: 0. @since 3.11.0 *)
+(*
+    mutable minor_generations : int;
+*)
+    (** The number of generations in the minor collector. This is the
+        number of minor GC cycles that a value must survive before it
+        is promoted to the major heap. Default: 1. Note that the
+        total amount of memory reserved for the minor heap is
+        [minor_heap_size] * (2 * [minor_generations] - 1).
+        @since 4.03.0 *)
 }
 (** The GC parameters are given as a [control] record.  Note that
     these parameters can also be initialised by setting the
@@ -173,11 +182,11 @@ external minor : unit -> unit = "caml_gc_minor"
 
 external major_slice : int -> int = "caml_gc_major_slice";;
 (** [major_slice n]
-    Do a minor collection and a slice of major collection. [n] is the
+    does a minor collection and a slice of major collection. [n] is the
     size of the slice: the GC will do enough work to free (on average)
     [n] words of memory. If [n] = 0, the GC will try to do enough work
     to ensure that the next slice has 0 work to do.
-    Return an approximation of the work that the next slice will have
+    Returns an approximation of the work that the next slice will have
     to do. *)
 
 external major : unit -> unit = "caml_gc_major"
@@ -200,6 +209,11 @@ val allocated_bytes : unit -> float
 (** Return the total number of bytes allocated since the program was
    started.  It is returned as a [float] to avoid overflow problems
    with [int] on 32-bit machines. *)
+
+(*
+val get_minor_free : unit -> int = "caml_gc_get_minor_free"
+(** Return the number of free words in the minor heap. *)
+*)
 
 val finalise : ('a -> unit) -> 'a -> unit
 (** [finalise f v] registers [f] as a finalisation function for [v].
@@ -255,6 +269,11 @@ val finalise : ('a -> unit) -> 'a -> unit
    stored into arrays, so they can be finalised and collected while
    another copy is still in use by the program.
 
+   You should not call [finalise] on lazy values. [finalize] will also
+   raise [Invalid_argument] if it detects that its argument is a lazy
+   value. Note that optimization of lazy values by the GC makes it
+   impossible to guarantee that [finalise] will always detect when [v]
+   is a lazy value.
 
    The results of calling {!String.make}, {!Bytes.make}, {!Bytes.create},
    {!Array.make}, and {!Pervasives.ref} are guaranteed to be

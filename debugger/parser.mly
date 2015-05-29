@@ -117,6 +117,8 @@ argument_list_eol :
 argument_eol :
     ARGUMENT end_of_line
       { $1 };
+  | end_of_line
+      { "" };
 
 /* Integer */
 

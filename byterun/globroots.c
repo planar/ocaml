@@ -269,13 +269,19 @@ void caml_scan_global_roots(scanning_action f)
 void caml_scan_global_young_roots(scanning_action f)
 {
   struct global_root * gr;
+  struct global_root_list gr_young_tmp = { NULL, { NULL, }, 0 };
 
   caml_iterate_global_roots(f, &caml_global_roots);
   caml_iterate_global_roots(f, &caml_global_roots_young);
   /* Move young roots to old roots */
   for (gr = caml_global_roots_young.forward[0];
        gr != NULL; gr = gr->forward[0]) {
-    caml_insert_global_root(&caml_global_roots_old, gr->root);
+    if (Is_young (*(gr->root))){
+      caml_insert_global_root (&gr_young_tmp, gr->root);
+    }else{
+      caml_insert_global_root(&caml_global_roots_old, gr->root);
+    }
   }
   caml_empty_global_roots(&caml_global_roots_young);
+  caml_global_roots_young = gr_young_tmp;
 }

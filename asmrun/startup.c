@@ -88,6 +88,8 @@ static void init_atoms(void)
 static uintnat percent_free_init = Percent_free_def;
 static uintnat max_percent_free_init = Max_percent_free_def;
 static uintnat minor_heap_init = Minor_heap_def;
+static uintnat age_limit_init = Minor_age_limit_def;
+static uintnat size_factor_init = Minor_size_factor_def;
 static uintnat heap_chunk_init = Heap_chunk_def;
 static uintnat heap_size_init = Init_heap_def;
 static uintnat max_stack_init = Max_stack_def;
@@ -126,6 +128,8 @@ static void parse_camlrunparam(void)
   if (opt != NULL){
     while (*opt != '\0'){
       switch (*opt++){
+      case 'g': scanmult (opt, &age_limit_init); break;
+      case 'G': scanmult (opt, &size_factor_init); break;
       case 's': scanmult (opt, &minor_heap_init); break;
       case 'i': scanmult (opt, &heap_chunk_init); break;
       case 'h': scanmult (opt, &heap_size_init); break;
@@ -138,9 +142,23 @@ static void parse_camlrunparam(void)
       case 'b': caml_record_backtrace(Val_true); break;
       case 'p': caml_parser_trace = 1; break;
       case 'a': scanmult (opt, &p); caml_set_allocation_policy (p); break;
+#ifdef DEBUG
+      case 'q': caml_debug_quiet = 1; break;
+#endif
       }
     }
   }
+#ifdef DEBUG
+  {
+    char *v = getenv ("OCAMLDEBUGVAL");
+    if (v != NULL) sscanf (v, "%x", &ocaml_debug_low_byte);
+
+    if (!caml_debug_quiet){
+      caml_verb_gc = 0x001 + 0x002 + 0x004 + 0x008 + 0x010 + 0x020;
+      caml_gc_debug_message (-1, "### OCaml runtime: debug mode ###\n", 0);
+    }
+  }
+#endif
 }
 
 /* These are termination hooks used by the systhreads library */
@@ -179,7 +197,8 @@ void caml_main(char **argv)
 #ifdef DEBUG
   caml_gc_message (-1, "### OCaml runtime: debug mode ###\n", 0);
 #endif
-  caml_init_gc (minor_heap_init, heap_size_init, heap_chunk_init,
+  caml_init_gc (minor_heap_init, age_limit_init, size_factor_init,
+                heap_size_init, heap_chunk_init,
                 percent_free_init, max_percent_free_init, major_window_init);
   init_atoms();
   caml_init_signals();

@@ -34,6 +34,10 @@
 #undef NATIVE_CODE_AND_NO_NAKED_POINTERS
 #endif
 
+#ifdef DEBUG
+int caml_check_minor_heap_empty (void); /* from minor_gc.c */
+#endif
+
 uintnat caml_percent_free;
 uintnat caml_major_heap_increment;
 CAMLexport char *caml_heap_start;
@@ -65,6 +69,18 @@ double caml_gc_clock = 0.0;
 #ifdef DEBUG
 static unsigned long major_gc_counter = 0;
 #endif
+
+/* We need to ensure that enough minor collections are done during the
+   marking phase, to guarantee that all ref_table entries point to
+   live objects before we start sweeping. Otherwise, the objects can be
+   reallocated before the minor GC looks at their ref_table entries,
+   which breaks the minor GC invariants when the ref_table entry hits
+   the oldify_todo_list links.
+
+   [caml_minor_marking_counter] counts down from [caml_young_age_limit + 1].
+   It is unsafe to begin sweeping until it reaches 0.
+ */
+uintnat caml_minor_marking_counter = 0;
 
 static void realloc_gray_vals (void)
 {
@@ -138,6 +154,7 @@ static void start_cycle (void)
   caml_gc_phase = Phase_mark;
   caml_gc_subphase = Subphase_roots;
   markhp = NULL;
+  caml_minor_marking_counter = caml_young_age_limit + 1;
 #ifdef DEBUG
   ++ major_gc_counter;
   caml_heap_check ();
@@ -393,6 +410,7 @@ static void sweep_slice (intnat work)
 {
   char *hp;
   header_t hd;
+  asize_t sz;
 
   if (caml_major_slice_begin_hook != NULL) (*caml_major_slice_begin_hook) ();
   caml_gc_message (0x40, "Sweeping %ld words\n", work);
@@ -400,8 +418,9 @@ static void sweep_slice (intnat work)
     if (caml_gc_sweep_hp < limit){
       hp = caml_gc_sweep_hp;
       hd = Hd_hp (hp);
-      work -= Whsize_hd (hd);
-      caml_gc_sweep_hp += Bhsize_hd (hd);
+      sz = Whsize_hd (hd);
+      work -= sz;
+      caml_gc_sweep_hp += Bsize_wsize (sz);
       switch (Color_hd (hd)){
       case Caml_white:
         if (Tag_hd (hd) == Custom_tag){
@@ -627,10 +646,16 @@ void caml_major_collection_slice (intnat howmuch)
     */
   }else{
     Assert (caml_gc_phase == Phase_sweep);
-    CAML_INSTR_INT ("major/work/sweep#", computed_work);
-    sweep_slice (computed_work);
-    CAML_INSTR_TIME (tmr, "major/sweep");
-    caml_gc_message (0x02, "$", 0);
+    if (caml_minor_marking_counter == 0){
+      CAML_INSTR_INT ("major/work/sweep#", computed_work);
+      sweep_slice (computed_work);
+      CAML_INSTR_TIME (tmr, "major/sweep");
+      caml_gc_message (0x02, "$", 0);
+    }else{
+#ifdef DEBUG
+      caml_gc_debug_message (0x02, "_", 0);
+#endif
+    }
   }
 
   if (caml_gc_phase == Phase_idle){
@@ -666,6 +691,7 @@ void caml_major_collection_slice (intnat howmuch)
 */
 void caml_finish_major_cycle (void)
 {
+  CAMLassert (caml_check_minor_heap_empty ());
   if (caml_gc_phase == Phase_idle) start_cycle ();
   while (caml_gc_phase == Phase_mark) mark_slice (LONG_MAX);
   Assert (caml_gc_phase == Phase_sweep);

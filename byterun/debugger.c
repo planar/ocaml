@@ -26,6 +26,9 @@
 
 int caml_debugger_in_use = 0;
 uintnat caml_event_count;
+#ifdef DEBUG
+uintnat caml_global_event_count = 0;
+#endif
 int caml_debugger_fork_mode = 1; /* parent by default */
 value marshal_flags = Val_emptylist;
 

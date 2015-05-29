@@ -27,8 +27,8 @@ struct final {
 
 static struct final *final_table = NULL;
 static uintnat old = 0, young = 0, size = 0;
-/* [0..old) : finalisable set
-   [old..young) : recent set
+/* [0..old) : old-only set
+   [old..young) : recent set: contains both old and new
    [young..size) : free space
 */
 
@@ -60,56 +60,45 @@ static void alloc_to_do (int size)
 
 /* Find white finalisable values, put them in the finalising set, and
    darken them.
-   The recent set is empty.
 */
 void caml_final_update (void)
 {
   uintnat i, j, k;
   uintnat todo_count = 0;
 
-  Assert (old <= young);
-  for (i = 0; i < old; i++){
+  CAMLassert (old <= young);
+  for (i = 0; i < young; i++){
     Assert (Is_block (final_table[i].val));
-    Assert (Is_in_heap (final_table[i].val));
-    if (Is_white_val (final_table[i].val)) ++ todo_count;
+    if (Is_in_heap (final_table[i].val) && Is_white_val (final_table[i].val))
+      ++ todo_count;
   }
 
   if (todo_count > 0){
     alloc_to_do (todo_count);
     j = k = 0;
-    for (i = 0; i < old; i++){
-    again:
+    for (i = 0; i < young; i++){
       Assert (Is_block (final_table[i].val));
-      Assert (Is_in_heap (final_table[i].val));
-      if (Is_white_val (final_table[i].val)){
-        if (Tag_val (final_table[i].val) == Forward_tag){
-          value fv;
-          Assert (final_table[i].offset == 0);
-          fv = Forward_val (final_table[i].val);
-          if (Is_block (fv)
-              && (!Is_in_value_area(fv) || Tag_val (fv) == Forward_tag
-                  || Tag_val (fv) == Lazy_tag || Tag_val (fv) == Double_tag)){
-            /* Do not short-circuit the pointer. */
-          }else{
-            final_table[i].val = fv;
-            if (Is_block (final_table[i].val)
-                && Is_in_heap (final_table[i].val)){
-              goto again;
-            }
-          }
+      if (Is_in_heap (final_table[i].val)){
+        if (Is_white_val (final_table[i].val)){
+          to_do_tl->item[k++] = final_table[i];
+        }else{
+          final_table[j++] = final_table[i];
         }
-        to_do_tl->item[k++] = final_table[i];
       }else{
+        CAMLassert (Is_young (final_table[i].val));
         final_table[j++] = final_table[i];
+        if (j < old) old = j;
       }
     }
-    young = old = j;
+    if (j < old) old = j;
+    young = j;
     to_do_tl->size = k;
     for (i = 0; i < k; i++){
       CAMLassert (Is_white_val (to_do_tl->item[i].val));
       caml_darken (to_do_tl->item[i].val, NULL);
     }
   }
+  CAMLassert (old <= young);
 }
 
 static int running_finalisation_function = 0;
@@ -158,7 +147,7 @@ void caml_final_do_strong_roots (scanning_action f)
   uintnat i;
   struct to_do *todo;
 
-  Assert (old <= young);
+  CAMLassert (old <= young);
   for (i = 0; i < young; i++) Call_action (f, final_table[i].fun);
 
   for (todo = to_do_hd; todo != NULL; todo = todo->next){
@@ -194,13 +183,17 @@ void caml_final_do_young_roots (scanning_action f)
   }
 }
 
-/* Empty the recent set into the finalisable set.
+/* Advance the limit between old and recent set.
    This is called at the end of each minor collection.
-   The minor heap must be empty when this is called.
 */
-void caml_final_empty_young (void)
+void caml_final_transfer_young (void)
 {
-  old = young;
+  CAMLassert (old <= young);
+  while (old < young && !Is_young (final_table[old].val)){
+    CAMLassert (Is_in_heap (final_table[old].val));
+    ++ old;
+  }
+  CAMLassert (old <= young);
 }
 
 /* Put (f,v) in the recent set. */
@@ -236,7 +229,7 @@ CAMLprim value caml_final_register (value f, value v)
     final_table[young].val = v;
   }
   ++ young;
-
+  CAMLassert (old <= young);
   return Val_unit;
 }
 

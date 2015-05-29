@@ -71,9 +71,18 @@ type control =
 
     window_size : int;
     (** The size of the window used by the major GC for smoothing
-        out variations in its workload. This is an integer between
-        1 and 50.
-        Default: 1. @since 4.03.0 *)
+        out variations in its workload. Between 1 and 50. Default: 1.
+        @since 4.03.0 *)
+
+    age_limit : int;
+    (** The maximum age (counted in minor collections) of values in
+        the intermediate heap. Between 0 and 1000. Default: 0.
+        @since 4.03.0 *)
+
+    intermediate_heap_size : int;
+    (** The size of the intermediate heap, in multiples of the minor
+        heap size. Between 0 and [3 * age_limit]. Default: 0.
+        @since 4.03.0 *)
 }
 
 external get : unit -> control = "caml_gc_get"

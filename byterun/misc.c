@@ -28,12 +28,14 @@ caml_timing_hook caml_finalise_end_hook = NULL;
 
 #ifdef DEBUG
 
+int ocaml_debug_low_byte = 0xD8;
+
 int caml_failed_assert (char * expr, char * file, int line)
 {
   fprintf (stderr, "file %s; line %d ### Assertion failed: %s\n",
            file, line, expr);
   fflush (stderr);
-  exit (100);
+  abort ();
   return 1; /* not reached */
 }
 
@@ -56,6 +58,16 @@ void caml_gc_message (int level, char *msg, uintnat arg)
     fflush (stderr);
   }
 }
+
+#ifdef DEBUG
+
+int caml_debug_quiet = 0;
+
+void caml_gc_debug_message (int level, char *msg, uintnat arg)
+{
+  if (!caml_debug_quiet) caml_gc_message (level, msg, arg);
+}
+#endif
 
 CAMLexport void caml_fatal_error (char *msg)
 {

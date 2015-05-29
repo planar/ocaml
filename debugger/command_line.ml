@@ -291,6 +291,11 @@ let instr_kill ppf lexbuf =
     show_no_point()
   end
 
+let instr_pid ppf lexbuf =
+  eol lexbuf;
+  if not !loaded then error "The program is not being run.";
+  fprintf ppf "@[%d@]@." !current_checkpoint.c_pid
+
 let instr_run ppf lexbuf =
   eol lexbuf;
   ensure_loaded ();
@@ -987,6 +992,9 @@ With no argument, reset the search path." };
      { instr_name = "kill"; instr_prio = false;
        instr_action = instr_kill; instr_repeat = true; instr_help =
 "kill the program being debugged." };
+     { instr_name = "pid"; instr_prio = false;
+       instr_action = instr_pid; instr_repeat = true; instr_help =
+"print the process ID of the current active process." };
      { instr_name = "help"; instr_prio = false;
        instr_action = instr_help; instr_repeat = true; instr_help =
 "print list of commands." };

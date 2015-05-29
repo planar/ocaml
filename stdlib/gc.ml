@@ -38,6 +38,9 @@ type control = {
   mutable max_overhead : int;
   mutable stack_limit : int;
   mutable allocation_policy : int;
+  (*
+  mutable minor_generations : int;
+  *)
 };;
 
 external stat : unit -> stat = "caml_gc_stat";;
@@ -81,6 +84,10 @@ let allocated_bytes () =
   let (mi, pro, ma) = counters () in
   (mi +. ma -. pro) *. float_of_int (Sys.word_size / 8)
 ;;
+
+(*
+external get_minor_free : unit -> int = "caml_gc_get_minor_free";;
+*)
 
 external finalise : ('a -> unit) -> 'a -> unit = "caml_final_register";;
 external finalise_release : unit -> unit = "caml_final_release";;

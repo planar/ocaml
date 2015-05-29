@@ -126,10 +126,7 @@ void caml_thread_code (code_t code, asize_t len)
   for (p = code; p < code + len; /*nothing*/) {
     opcode_t instr = *p;
     if (instr < 0 || instr >= FIRST_UNIMPLEMENTED_OP){
-      /* FIXME -- should Assert(false) ?
-      caml_fatal_error_arg ("Fatal error in fix_code: bad opcode (%lx)\n",
-                            (char *)(long)instr);
-      */
+      CAMLassert (0);
       instr = STOP;
     }
     *p++ = (opcode_t)(caml_instr_table[instr] - caml_instr_base);

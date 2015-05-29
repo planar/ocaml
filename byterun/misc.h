@@ -104,19 +104,35 @@ extern void caml_ext_table_free(struct ext_table * tbl, int free_entries);
 
 extern uintnat caml_verb_gc;
 void caml_gc_message (int, char *, uintnat);
+#ifdef DEBUG
+extern int caml_debug_quiet;
+void caml_gc_debug_message (int, char *, uintnat);
+#endif
 
 /* Memory routines */
 
 char *caml_aligned_malloc (asize_t, int, void **);
 
 #ifdef DEBUG
+/* Debug macros used to overwrite deallocated memory.
+   Used to speed up detection of dangling pointers. */
+
+/* This variable can be set through an environment variable.
+   Setting it odd or even will help detect different kinds of bugs. */
+extern int ocaml_debug_low_byte;
+
 #ifdef ARCH_SIXTYFOUR
-#define Debug_tag(x) (0xD700D7D7D700D6D7ul \
+#define Debug_tag(x) (0xD700D7D7D700D600ul    \
+                      | ocaml_debug_low_byte  \
                       | ((uintnat) (x) << 16) \
                       | ((uintnat) (x) << 48))
 #else
-#define Debug_tag(x) (0xD700D6D7ul | ((uintnat) (x) << 16))
+#define Debug_tag(x) (0xD700D600ul            \
+                      | ocaml_debug_low_byte  \
+                      | ((uintnat) (x) << 16))
 #endif /* ARCH_SIXTYFOUR */
+
+#define Debug_check(x) CAMLassert ((x) != Debug_tag (((x) >> 16) & 0xFF))
 
 /*
   00 -> free words in minor heap
@@ -126,6 +142,7 @@ char *caml_aligned_malloc (asize_t, int, void **);
   10 -> uninitialised fields of minor objects
   11 -> uninitialised fields of major objects
   15 -> uninitialised words of [caml_aligned_malloc] blocks
+  20 -> unused entries in [ref_table]s
   85 -> filler bytes of [caml_aligned_malloc]
 
   special case (byte by byte):
@@ -138,6 +155,7 @@ char *caml_aligned_malloc (asize_t, int, void **);
 #define Debug_uninit_minor   Debug_tag (0x10)
 #define Debug_uninit_major   Debug_tag (0x11)
 #define Debug_uninit_align   Debug_tag (0x15)
+#define Debug_ref_tables     Debug_tag (0x20)
 #define Debug_filler_align   Debug_tag (0x85)
 
 #define Debug_uninit_stat    0xD7

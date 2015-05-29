@@ -139,7 +139,7 @@ static value heap_stats (int returnstats)
   header_t cur_hd;
 
 #ifdef DEBUG
-  caml_gc_message (-1, "### OCaml runtime: heap check ###\n", 0);
+  caml_gc_debug_message (-1, "### OCaml runtime: heap check ###\n", 0);
 #endif
 
   while (chunk != NULL){
@@ -333,8 +333,8 @@ CAMLprim value caml_gc_get(value v)
   CAMLparam0 ();   /* v is ignored */
   CAMLlocal1 (res);
 
-  res = caml_alloc_tuple (8);
-  Store_field (res, 0, Val_long (Wsize_bsize (caml_minor_heap_size)));  /* s */
+  res = caml_alloc_tuple (10);
+  Store_field (res, 0, Val_long (caml_minor_heap_wsz));                 /* s */
   Store_field (res, 1, Val_long (caml_major_heap_increment));           /* i */
   Store_field (res, 2, Val_long (caml_percent_free));                   /* o */
   Store_field (res, 3, Val_long (caml_verb_gc));                        /* v */
@@ -346,6 +346,8 @@ CAMLprim value caml_gc_get(value v)
 #endif
   Store_field (res, 6, Val_long (caml_allocation_policy));              /* a */
   Store_field (res, 7, Val_long (caml_major_window));                   /* w */
+  Store_field (res, 8, Val_long (caml_young_age_limit));                /* g */
+  Store_field (res, 9, Val_long (caml_aging_size_factor));              /* G */
   CAMLreturn (res);
 }
 
@@ -363,9 +365,30 @@ static uintnat norm_pmax (uintnat p)
 
 static intnat norm_minsize (intnat s)
 {
+  if (s & 1) ++ s;
   if (s < Minor_heap_min) s = Minor_heap_min;
   if (s > Minor_heap_max) s = Minor_heap_max;
   return s;
+}
+
+static intnat norm_size_factor (intnat s)
+{
+  if (s < 3) s = 0;
+  return s;
+}
+
+static intnat norm_age_limit (intnat l)
+{
+  if (l < 0) l = 0;
+  if (l > 1000) l = 1000;
+  return l;
+}
+
+static intnat norm_aging_size_factor (intnat l)
+{
+  if (l < 0) l = 0;
+  if (l > 3 * caml_young_age_limit) l = 3 * caml_young_age_limit;
+  return l;
 }
 
 static uintnat norm_window (intnat w)
@@ -379,7 +402,7 @@ CAMLprim value caml_gc_set(value v)
 {
   uintnat newpf, newpm;
   asize_t newheapincr;
-  asize_t newminsize;
+  asize_t newminwsz, new_aging_size_factor;
   uintnat oldpolicy;
   CAML_INSTR_SETUP (tmr, "");
 
@@ -419,7 +442,7 @@ CAMLprim value caml_gc_set(value v)
                      caml_allocation_policy);
   }
 
-  if (Wosize_val (v) >= 8){
+  if (Wosize_val (v) >= 8){  /* TODO remove this test after merging Gc_temp */
     int old_window = caml_major_window;
     caml_set_major_window (norm_window (Long_val (Field (v, 7))));
     if (old_window != caml_major_window){
@@ -428,13 +451,30 @@ CAMLprim value caml_gc_set(value v)
     }
   }
 
-    /* Minor heap size comes last because it will trigger a minor collection
-       (thus invalidating [v]) and it can raise [Out_of_memory]. */
-  newminsize = Bsize_wsize (norm_minsize (Long_val (Field (v, 0))));
-  if (newminsize != caml_minor_heap_size){
-    caml_gc_message (0x20, "New minor heap size: %luk bytes\n",
-                     newminsize/1024);
-    caml_set_minor_heap_size (newminsize);
+  if (Wosize_val (v) >= 9){  /* TODO remove this test after merging Gc_temp */
+    int old_age_limit = caml_young_age_limit;
+    caml_young_age_limit = norm_age_limit (Long_val (Field (v, 8)));
+    if (old_age_limit != caml_young_age_limit){
+      caml_gc_message (0x20, "New age limit: %d\n", caml_young_age_limit);
+    }
+  }
+
+  /* Minor and intermediate heap sizes come last because they will
+     trigger a minor collection (thus invalidating [v]) and can
+     raise [Out_of_memory]. */
+  newminwsz = norm_minsize (Long_val (Field (v, 0)));
+  if (Wosize_val (v) >= 10){  /* TODO remove this test after merging Gc_temp */
+    new_aging_size_factor = norm_aging_size_factor (Long_val (Field (v, 9)));
+  }else{
+    new_aging_size_factor = caml_aging_size_factor;
+  }
+  if (newminwsz != caml_minor_heap_wsz
+      || new_aging_size_factor != caml_aging_size_factor){
+    caml_gc_message (0x20, "New minor heap size: %luk words\n",
+                     newminwsz/1024);
+    caml_gc_message (0x20, "New intermediate heap size: %luk words\n",
+                     newminwsz * new_aging_size_factor / 1024);
+    caml_set_minor_heap_size (newminwsz, new_aging_size_factor);
   }
   CAML_INSTR_TIME (tmr, "explicit/gc_set");
   return Val_unit;
@@ -444,8 +484,7 @@ CAMLprim value caml_gc_minor(value v)
 {
   CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
-  caml_request_minor_gc ();
-  caml_gc_dispatch ();
+  caml_minor_collection_empty ();
   CAML_INSTR_TIME (tmr, "explicit/gc_minor");
   return Val_unit;
 }
@@ -471,7 +510,7 @@ CAMLprim value caml_gc_major(value v)
   CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x1, "Major GC cycle requested\n", 0);
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   test_and_compact ();
   caml_final_do_calls ();
@@ -484,10 +523,10 @@ CAMLprim value caml_gc_full_major(value v)
   CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x1, "Full major GC cycle requested\n", 0);
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   caml_final_do_calls ();
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   test_and_compact ();
   caml_final_do_calls ();
@@ -499,8 +538,8 @@ CAMLprim value caml_gc_major_slice (value v)
 {
   CAML_INSTR_SETUP (tmr, "");
   Assert (Is_long (v));
-  caml_empty_minor_heap ();
-  caml_major_collection_slice (Long_val (v));
+  caml_request_major_slice ();
+  caml_gc_dispatch ();
   CAML_INSTR_TIME (tmr, "explicit/gc_major_slice");
   return Val_long (0);
 }
@@ -510,10 +549,10 @@ CAMLprim value caml_gc_compaction(value v)
   CAML_INSTR_SETUP (tmr, "");
   Assert (v == Val_unit);
   caml_gc_message (0x10, "Heap compaction requested\n", 0);
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   caml_final_do_calls ();
-  caml_empty_minor_heap ();
+  caml_minor_collection_empty ();
   caml_finish_major_cycle ();
   caml_compact_heap ();
   caml_final_do_calls ();
@@ -554,9 +593,9 @@ uintnat caml_normalize_heap_increment (uintnat i)
   return ((i + Page_size - 1) >> Page_log) << Page_log;
 }
 
-void caml_init_gc (uintnat minor_size, uintnat major_size,
-                   uintnat major_incr, uintnat percent_fr,
-                   uintnat percent_m, uintnat window)
+void caml_init_gc (uintnat minor_size, uintnat age_limit, uintnat size_factor,
+                   uintnat major_size, uintnat major_incr,
+                   uintnat percent_fr, uintnat percent_m, uintnat window)
 {
   uintnat major_heap_size =
     Bsize_wsize (caml_normalize_heap_increment (major_size));
@@ -568,14 +607,16 @@ void caml_init_gc (uintnat minor_size, uintnat major_size,
   if (caml_page_table_initialize(Bsize_wsize(minor_size) + major_heap_size)){
     caml_fatal_error ("OCaml runtime error: cannot initialize page table\n");
   }
-  caml_set_minor_heap_size (Bsize_wsize (norm_minsize (minor_size)));
+  caml_set_minor_heap_size (norm_minsize (minor_size),
+                            norm_size_factor(size_factor));
+  caml_set_minor_age_limit (norm_age_limit (age_limit));
   caml_major_heap_increment = major_incr;
   caml_percent_free = norm_pfree (percent_fr);
   caml_percent_max = norm_pmax (percent_m);
   caml_init_major_heap (major_heap_size);
   caml_major_window = norm_window (window);
-  caml_gc_message (0x20, "Initial minor heap size: %luk bytes\n",
-                   caml_minor_heap_size / 1024);
+  caml_gc_message (0x20, "Initial minor heap size: %luk words\n",
+                   caml_minor_heap_wsz / 1024);
   caml_gc_message (0x20, "Initial major heap size: %luk bytes\n",
                    major_heap_size / 1024);
   caml_gc_message (0x20, "Initial space overhead: %lu%%\n", caml_percent_free);
@@ -637,7 +678,7 @@ CAMLprim value caml_runtime_parameters (value unit)
      /* O */ caml_percent_max,
      /* p */ caml_parser_trace,
      /* R */ /* missing */
-     /* s */ caml_minor_heap_size,
+     /* s */ caml_minor_heap_wsz,
 #if defined(DEBUG) && ! defined(NATIVE_CODE)
      /* t */ caml_trace_flag,
 #endif

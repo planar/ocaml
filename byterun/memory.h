@@ -148,6 +148,7 @@ int caml_page_table_initialize(mlsize_t bytesize);
     caml_gc_dispatch ();                                                    \
     Restore_after_gc;                                                       \
     caml_young_ptr -= Whsize_wosize (wosize);                               \
+    Assert (caml_young_ptr >= caml_young_alloc_start);                      \
   }                                                                         \
   Hd_hp (caml_young_ptr) = Make_header ((wosize), (tag), Caml_black);       \
   (result) = Val_hp (caml_young_ptr);                                       \
@@ -476,7 +477,7 @@ CAMLextern void caml_remove_generational_global_root (value *);
    previously registered with [caml_register_generational_global_root]. */
 
 CAMLextern void caml_modify_generational_global_root(value *r, value newval);
-
+  
 #ifdef __cplusplus
 }
 #endif

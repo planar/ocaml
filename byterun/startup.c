@@ -227,6 +227,8 @@ Algorithm:
 static uintnat percent_free_init = Percent_free_def;
 static uintnat max_percent_free_init = Max_percent_free_def;
 static uintnat minor_heap_init = Minor_heap_def;
+static uintnat age_limit_init = Minor_age_limit_def;
+static uintnat size_factor_init = Minor_size_factor_def;
 static uintnat heap_chunk_init = Heap_chunk_def;
 static uintnat heap_size_init = Init_heap_def;
 static uintnat max_stack_init = Max_stack_def;
@@ -311,6 +313,8 @@ static void parse_camlrunparam(void)
       switch (*opt++){
       case 'a': scanmult (opt, &p); caml_set_allocation_policy (p); break;
       case 'b': caml_record_backtrace(Val_true); break;
+      case 'g': scanmult (opt, &age_limit_init); break;
+      case 'G': scanmult (opt, &size_factor_init); break;
       case 'h': scanmult (opt, &heap_size_init); break;
       case 'H': scanmult (opt, &caml_use_huge_pages); break;
       case 'i': scanmult (opt, &heap_chunk_init); break;
@@ -321,6 +325,7 @@ static void parse_camlrunparam(void)
       /* case 'R': see stdlib/hashtbl.mli */
       case 's': scanmult (opt, &minor_heap_init); break;
 #ifdef DEBUG
+      case 'q': caml_debug_quiet = 1; break;
       case 't': caml_trace_flag = 1; break;
 #endif
       case 'v': scanmult (opt, &caml_verb_gc); break;
@@ -328,6 +333,17 @@ static void parse_camlrunparam(void)
       }
     }
   }
+#ifdef DEBUG
+  {
+    char *v = getenv ("OCAMLDEBUGVAL");
+    if (v != NULL) sscanf (v, "%x", &ocaml_debug_low_byte);
+
+    if (!caml_debug_quiet){
+      caml_verb_gc |= 0x001 + 0x002 + 0x004 + 0x008 + 0x010 + 0x020;
+      caml_gc_debug_message (-1, "### OCaml runtime: debug mode ###\n", 0);
+    }
+  }
+#endif
 }
 
 extern void caml_init_ieee_floats (void);
@@ -407,7 +423,8 @@ CAMLexport void caml_main(char **argv)
   /* Read the table of contents (section descriptors) */
   caml_read_section_descriptors(fd, &trail);
   /* Initialize the abstract machine */
-  caml_init_gc (minor_heap_init, heap_size_init, heap_chunk_init,
+  caml_init_gc (minor_heap_init, age_limit_init, size_factor_init,
+                heap_size_init, heap_chunk_init,
                 percent_free_init, max_percent_free_init, major_window_init);
   caml_init_stack (max_stack_init);
   init_atoms();
@@ -434,8 +451,10 @@ CAMLexport void caml_main(char **argv)
   caml_close_channel(chan); /* this also closes fd */
   caml_stat_free(trail.section);
   /* Ensure that the globals are in the major heap. */
+  caml_do_full_minor = 1;
   caml_oldify_one (caml_global_data, &caml_global_data);
   caml_oldify_mopup ();
+  caml_do_full_minor = 0;
   /* Initialize system libraries */
   caml_sys_init(exe_name, argv + pos);
 #ifdef _WIN32
@@ -475,9 +494,6 @@ CAMLexport void caml_startup_code(
   caml_install_invalid_parameter_handler();
 #endif
   caml_init_custom_operations();
-#ifdef DEBUG
-  caml_verb_gc = 63;
-#endif
   cds_file = getenv("CAML_DEBUG_FILE");
   if (cds_file != NULL) {
     caml_cds_file = caml_strdup(cds_file);
@@ -488,7 +504,8 @@ CAMLexport void caml_startup_code(
     exe_name = proc_self_exe;
   caml_external_raise = NULL;
   /* Initialize the abstract machine */
-  caml_init_gc (minor_heap_init, heap_size_init, heap_chunk_init,
+  caml_init_gc (minor_heap_init, age_limit_init, size_factor_init,
+                heap_size_init, heap_chunk_init,
                 percent_free_init, max_percent_free_init, major_window_init);
   caml_init_stack (max_stack_init);
   init_atoms();
@@ -514,8 +531,10 @@ CAMLexport void caml_startup_code(
   /* Load the globals */
   caml_global_data = caml_input_value_from_block(data, data_size);
   /* Ensure that the globals are in the major heap. */
+  caml_do_full_minor = 1;
   caml_oldify_one (caml_global_data, &caml_global_data);
   caml_oldify_mopup ();
+  caml_do_full_minor = 0;
   /* Record the sections (for caml_get_section_table in meta.c) */
   caml_section_table = section_table;
   caml_section_table_size = section_table_size;

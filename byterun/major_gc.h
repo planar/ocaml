@@ -49,6 +49,7 @@ extern uintnat caml_fl_size_at_phase_change;
 CAMLextern char *caml_heap_start;
 extern uintnat total_heap_size;
 extern char *caml_gc_sweep_hp;
+extern uintnat caml_minor_marking_counter;
 
 extern int caml_major_window;
 double caml_major_ring[Max_major_window];

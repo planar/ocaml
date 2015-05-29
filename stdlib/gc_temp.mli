@@ -22,15 +22,17 @@ external get_credit : unit -> int = "caml_get_major_credit" "noalloc"
 
 type control =
   { mutable minor_heap_size : int;
-    (** The size (in words) of the minor heap.  Changing
-       this parameter will trigger a minor collection.  Default: 256k. *)
+    (** The size (in words) of the minor heap. Changing this parameter
+        will trigger a minor collection.
+        Default: 256k. OCAMLRUNPARAM letter: [s] *)
 
     mutable major_heap_increment : int;
     (** How much to add to the major heap when increasing it. If this
         number is less than or equal to 1000, it is a percentage of
         the current heap size (i.e. setting it to 100 will double the heap
         size at each increase). If it is more than 1000, it is a fixed
-        number of words that will be added to the heap. Default: 15. *)
+        number of words that will be added to the heap.
+        Default: 15(%). OCAMLRUNPARAM letter: [i] *)
 
     mutable space_overhead : int;
     (** The major GC speed is computed from this parameter.
@@ -39,7 +41,7 @@ type control =
        percentage of the memory used for live data.
        The GC will work more (use more CPU time and collect
        blocks more eagerly) if [space_overhead] is smaller.
-       Default: 80. *)
+       Default: 80. OCAMLRUNPARAM letter: [o] *)
 
     mutable verbose : int;
     (** This value controls the GC messages on standard error output.
@@ -54,8 +56,8 @@ type control =
        - [0x040] Computation of major GC slice size.
        - [0x080] Calling of finalisation functions.
        - [0x100] Bytecode executable search at start-up.
-       - [0x200] Computation of compaction triggering condition.
-       Default: 0. *)
+       - [0x200] Computation of compaction-triggering condition.
+       Default: 0. OCAMLRUNPARAM letter: [v] *)
 
     mutable max_overhead : int;
     (** Heap compaction is triggered when the estimated amount
@@ -66,12 +68,13 @@ type control =
        If [max_overhead >= 1000000], compaction is never triggered.
        If compaction is permanently disabled, it is strongly suggested
        to set [allocation_policy] to 1.
-       Default: 500. *)
+       Default: 500. OCAMLRUNPARAM letter: [O] *)
 
     mutable stack_limit : int;
     (** The maximum size of the stack (in words).  This is only
-       relevant to the byte-code runtime, as the native code runtime
-       uses the operating system's stack.  Default: 1024k. *)
+        relevant to the byte-code runtime, as the native code runtime
+        uses the operating system's stack.
+        Default: 1024k. OCAMLRUNPARAM letter: [l] *)
 
     mutable allocation_policy : int;
     (** The policy used for allocating in the heap.  Possible
@@ -79,13 +82,27 @@ type control =
         quite fast but can result in fragmentation.  1 is the
         first-fit policy, which can be slower in some cases but
         can be better for programs with fragmentation problems.
-        Default: 0. @since 3.11.0 *)
+        Default: 0. OCAMLRUNPARAM letter: [a]
+        @since 3.11.0 *)
 
     window_size : int;
     (** The size of the window used by the major GC for smoothing
         out variations in its workload. This is an integer between
         1 and 50.
-        Default: 1. @since 4.03.0 *)
+        Default: 1. OCAMLRUNPARAM letter: [w]
+        @since 4.03.0 *)
+
+    age_limit : int;
+    (** The maximum age (counted in minor collections) of values in
+        the intermediate heap. Between 0 and 1000.
+        Default: 0. OCAMLRUNPARAM letter: [g]
+        @since 4.03.0 *)
+
+    intermediate_heap_size : int;
+    (** The size of the intermediate heap, in multiples of the minor
+        heap size. Between 0 and [3 * age_limit].
+        Default: 0. OCAMLRUNPARAM letter: [G]
+        @since 4.03.0 *)
 }
 
 external get : unit -> control = "caml_gc_get"

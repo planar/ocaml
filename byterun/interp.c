@@ -264,6 +264,9 @@ value caml_interprete(code_t prog, asize_t prog_size)
   if (caml_icount-- == 0) caml_stop_here ();
   Assert(sp >= caml_stack_low);
   Assert(sp <= caml_stack_high);
+  Debug_check (accu);
+  Debug_check (env);
+  Debug_check (sp[0]);
 #endif
   goto *(void *)(jumptbl_base + *pc++); /* Jump to the first instruction */
 #else
@@ -271,6 +274,11 @@ value caml_interprete(code_t prog, asize_t prog_size)
 #ifdef DEBUG
     caml_bcodcount++;
     if (caml_icount-- == 0) caml_stop_here ();
+    Assert(sp >= caml_stack_low);
+    Assert(sp <= caml_stack_high);
+    Debug_check (accu);
+    Debug_check (env);
+    Debug_check (sp[0]);
     if (caml_trace_flag>1) printf("\n##%ld\n", caml_bcodcount);
     if (caml_trace_flag) caml_disasm_instr(pc);
     if (caml_trace_flag>1) {
@@ -280,8 +288,6 @@ value caml_interprete(code_t prog, asize_t prog_size)
       caml_trace_accu_sp_file(accu,sp,prog,prog_size,stdout);
       fflush(stdout);
     };
-    Assert(sp >= caml_stack_low);
-    Assert(sp <= caml_stack_high);
 #endif
     curr_instr = *pc++;
 
@@ -1119,6 +1125,9 @@ value caml_interprete(code_t prog, asize_t prog_size)
       return accu;
 
     Instruct(EVENT):
+#ifdef DEBUG
+      ++caml_global_event_count;
+#endif
       if (--caml_event_count == 0) {
         Setup_for_debugger;
         caml_debugger(EVENT_COUNT);

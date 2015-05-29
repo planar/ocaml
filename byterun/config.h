@@ -135,12 +135,20 @@ typedef uint64 uintnat;
 
 /* Maximum size of the minor zone (words).
    Must be greater than or equal to [Minor_heap_min].
+   Must be even.
 */
 #define Minor_heap_max (1 << 28)
 
 /* Default size of the minor zone. (words)  */
 #define Minor_heap_def 262144
 
+/* Default age limit in the minor heap. Must be >= 0. */
+#define Minor_age_limit_def 0
+
+/* Default size factor for the aging minor heap.
+   Must be 0 or >= 3.
+*/
+#define Minor_size_factor_def 0
 
 /* Minimum size increment when growing the heap (words).
    Must be a multiple of [Page_size / sizeof (value)]. */

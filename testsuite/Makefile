@@ -86,7 +86,7 @@ promote:
 
 .PHONY: lib
 lib:
-	@cd lib && $(MAKE) -s BASEDIR=$(BASEDIR)
+	@cd lib && $(MAKE) BASEDIR=$(BASEDIR)
 
 .PHONY: clean
 clean:

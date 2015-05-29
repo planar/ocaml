@@ -13,7 +13,7 @@
 Random.init 12345;;
 
 let size = 10000;;
-let duration = 300;;
+let duration = 200;;
 
 type block = int array;;
 
@@ -96,7 +96,7 @@ let change i =
     if Random.int 2 = 0 then replace gc1 i;
 ;;
 
-while gccount () < duration do
+for _t = 0 to duration do
   for i = 0 to size - 1 do
     change i;
   done;
