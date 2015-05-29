@@ -164,7 +164,7 @@ static void reset_table (struct caml_ref_table *tbl)
 /* Note: the GC is already initialized iff [caml_young_base != NULL]. */
 void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
 {
-  value *new_heap;
+  char *new_heap;
   void *new_heap_base;
   asize_t full_wsz;
   asize_t aging_wsz;
@@ -180,8 +180,8 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
     caml_minor_collection_empty ();
   }
   CAMLassert (caml_young_ptr == caml_young_alloc_end);
-  new_heap = (value *) caml_aligned_malloc (Bsize_wsize (full_wsz),
-                                            0, &new_heap_base);
+  new_heap = caml_aligned_malloc (Bsize_wsize (full_wsz),
+                                  0, &new_heap_base);
   if (new_heap == NULL) caml_raise_out_of_memory();
   if (caml_page_table_add(In_young, new_heap,
                           new_heap + Bsize_wsize (full_wsz)) != 0)
@@ -192,11 +192,11 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
     free (caml_young_base);
   }
   caml_young_base = new_heap_base;
-  caml_young_start = new_heap;
-  caml_young_end = new_heap + full_wsz;
+  caml_young_start = (value *) new_heap;
+  caml_young_end = caml_young_start + full_wsz;
   caml_young_alloc_start = caml_young_start;
-  caml_young_alloc_mid = caml_young_start + alloc_wsz / 2;
-  caml_young_alloc_end = caml_young_start + alloc_wsz;
+  caml_young_alloc_mid = caml_young_alloc_start + alloc_wsz / 2;
+  caml_young_alloc_end = caml_young_alloc_start + alloc_wsz;
   caml_young_trigger = caml_young_alloc_start;
   caml_young_limit = caml_young_trigger;
   caml_young_ptr = caml_young_alloc_end;
