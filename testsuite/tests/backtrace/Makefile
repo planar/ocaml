@@ -30,8 +30,8 @@ byte:
 	  for arg in a b c d ''; do \
 	    printf " ... testing '$$file' with ocamlc and argument '$$arg':"; \
 	    F="`basename $$file .ml`"; \
-	    (OCAMLRUNPARAM=$$OCAMLRUNPARAM,b=1 \
-              $(OCAMLRUN) $(EXECNAME) $$arg || true) \
+	    (OCAMLRUNPARAM=$${OCAMLRUNPARAM},b=1 $(OCAMLRUN) $(EXECNAME) $$arg \
+	     || true) \
 	         >$$F.$$arg.byte.result 2>&1; \
 	    $(DIFF) $$F.$$arg.reference $$F.$$arg.byte.result >/dev/null \
 	    && echo " => passed" || echo " => failed"; \
@@ -42,8 +42,8 @@ byte:
 	  $(OCAMLC) -g -o $(EXECNAME) $$file; \
 	  printf " ... testing '$$file' with ocamlc:"; \
 	  F="`basename $$file .ml`"; \
-	  (OCAMLRUNPARAM=$$OCAMLRUNPARAM,b=1 \
-            $(OCAMLRUN) $(EXECNAME) $$arg || true) \
+	  (OCAMLRUNPARAM=$${OCAMLRUNPARAM},b=1 $(OCAMLRUN) $(EXECNAME) $$arg \
+	   || true) \
 	       >$$F.byte.result 2>&1; \
 	  $(DIFF) $$F.reference $$F.byte.result >/dev/null \
 	  && echo " => passed" || echo " => failed"; \
@@ -57,8 +57,7 @@ native:
 	  for arg in a b c d ''; do \
 	    printf " ... testing '$$file' with ocamlopt and argument '$$arg':"; \
 	    F="`basename $$file .ml`"; \
-	    (OCAMLRUNPARAM=$$OCAMLRUNPARAM,b=1 \
-              ./$(EXECNAME) $$arg || true) \
+	    (OCAMLRUNPARAM=$${OCAMLRUNPARAM},b=1 ./$(EXECNAME) $$arg || true) \
 	         >$$F.$$arg.native.result 2>&1; \
 	    $(DIFF) $$F.$$arg.reference $$F.$$arg.native.result >/dev/null \
 	    && echo " => passed" || echo " => failed"; \
@@ -69,8 +68,7 @@ native:
 	  $(OCAMLOPT) -g -o $(EXECNAME) $$file; \
 	  printf " ... testing '$$file' with ocamlopt:"; \
 	  F="`basename $$file .ml`"; \
-	  (OCAMLRUNPARAM=$OCAMLRUNPARAM,b=1 \
-            ./$(EXECNAME) $$arg || true) \
+	  (OCAMLRUNPARAM=${OCAMLRUNPARAM},b=1 ./$(EXECNAME) $$arg || true) \
 	       >$$F.native.result 2>&1; \
 	  $(DIFF) $$F.reference $$F.native.result >/dev/null \
 	  && echo " => passed" || echo " => failed"; \
@@ -80,8 +78,7 @@ native:
 	  $(OCAMLOPT) -inline 0 -g -o $(EXECNAME) $$file; \
 	  printf " ... testing '$$file' with ocamlopt:"; \
 	  F="`basename $$file .ml`"; \
-	  (OCAMLRUNPARAM=$$OCAMLRUNPARAM,b=1 \
-            ./$(EXECNAME) $$arg || true) \
+	  (OCAMLRUNPARAM=$${OCAMLRUNPARAM},b=1 ./$(EXECNAME) $$arg || true) \
 	       >$$F.native.result 2>&1; \
 	  $(DIFF) $$F.reference $$F.native.result >/dev/null \
 	  && echo " => passed" || echo " => failed"; \
