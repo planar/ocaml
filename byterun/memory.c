@@ -228,9 +228,7 @@ char *caml_alloc_for_heap (asize_t request)
   char *mem;
   void *block;
                                               Assert (request % Page_size == 0);
-  mem = caml_aligned_malloc (request
-                             + sizeof (heap_chunk_head)
-                             + sizeof (header_t),
+  mem = caml_aligned_malloc (request + sizeof (heap_chunk_head),
                              sizeof (heap_chunk_head), &block);
   if (mem == NULL) return NULL;
   mem += sizeof (heap_chunk_head);
