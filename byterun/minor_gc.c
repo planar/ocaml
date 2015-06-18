@@ -632,10 +632,10 @@ CAMLexport void caml_minor_collection_clean (void)
 CAMLexport void caml_minor_collection_empty (void)
 {
   age_limit = 0;
-  clean_minor_heap ();
   caml_requested_minor_gc = 0;
   caml_young_trigger = caml_young_alloc_mid;
   caml_young_limit = caml_young_trigger;
+  clean_minor_heap ();
 
   CAMLassert (caml_ref_table.ptr == caml_ref_table.base);
   CAMLassert (caml_weak_ref_table.ptr == caml_weak_ref_table.base);
