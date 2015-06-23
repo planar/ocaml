@@ -342,6 +342,8 @@ void caml_empty_minor_heap (void)
 }
 
 #ifdef CAML_INSTR
+extern uintnat caml_instr_alloc_fast;
+extern uintnat caml_instr_alloc_slow;
 extern uintnat caml_instr_alloc_jump;
 #endif
 
@@ -357,6 +359,10 @@ CAMLexport void caml_gc_dispatch (void)
   CAML_INSTR_TIME (tmr, "overhead");
   CAML_INSTR_INT ("alloc/jump#", caml_instr_alloc_jump);
   caml_instr_alloc_jump = 0;
+  CAML_INSTR_INT ("alloc/fast#", caml_instr_alloc_fast);
+  caml_instr_alloc_fast = 0;
+  CAML_INSTR_INT ("alloc/slow#", caml_instr_alloc_slow);
+  caml_instr_alloc_slow = 0;
 #endif
 
   if (trigger == caml_young_alloc_start || caml_requested_minor_gc){
