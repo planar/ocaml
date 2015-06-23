@@ -42,6 +42,8 @@ uintnat caml_percent_free;
 uintnat caml_major_heap_increment;
 CAMLexport char *caml_heap_start;
 char *caml_gc_sweep_hp;
+static char *caml_gc_sweep_counted;
+mlsize_t caml_gc_sweep_prev_wosz;
 int caml_gc_phase;        /* always Phase_mark, Phase_sweep, or Phase_idle */
 static value *gray_vals;
 static value *gray_vals_cur, *gray_vals_end;
@@ -53,7 +55,8 @@ uintnat caml_dependent_size, caml_dependent_allocated;
 double caml_extra_heap_resources;
 uintnat caml_fl_size_at_phase_change = 0;
 
-extern char *caml_fl_merge;  /* Defined in freelist.c. */
+extern char *caml_fl_merge [];   /* Defined in freelist.c. */
+extern int caml_fl_small_max;    /* Defined in freelist.c. */
 
 static char *markhp, *chunk, *limit;
 
@@ -394,7 +397,8 @@ static void mark_slice (intnat work)
         break;
       case Subphase_final: {
         /* Initialise the sweep phase. */
-        caml_gc_sweep_hp = caml_heap_start;
+        caml_gc_sweep_hp = caml_gc_sweep_counted = caml_heap_start;
+        caml_gc_sweep_prev_wosz = 0;
         caml_fl_init_merge ();
         caml_gc_phase = Phase_sweep;
         chunk = caml_heap_start;
@@ -428,24 +432,47 @@ static void sweep_slice (intnat work)
     if (caml_gc_sweep_hp < limit){
       hp = caml_gc_sweep_hp;
       hd = Hd_hp (hp);
-      sz = Whsize_hd (hd);
-      work -= sz;
-      caml_gc_sweep_hp += Bsize_wsize (sz);
       switch (Color_hd (hd)){
       case Caml_white:
         if (Tag_hd (hd) == Custom_tag){
           void (*final_fun)(value) = Custom_ops_val(Val_hp(hp))->finalize;
           if (final_fun != NULL) final_fun(Val_hp(hp));
         }
-        caml_gc_sweep_hp = caml_fl_merge_block (Bp_hp (hp));
-        break;
+        caml_fl_merge_block (Bp_hp (hp), limit);
+        hd = Hd_hp (hp);  /* set [hd] to correct value for fall through */
+        if (Wosize_hd(hd) == 0){
+          /* This is a fragment. */
+          caml_gc_sweep_hp += Bhsize_wosize (0);
+          break;
+        }
+        /* FALL THROUGH */
       case Caml_blue:
-        /* Only the blocks of the free-list are blue.  See [freelist.c]. */
-        caml_fl_merge = Bp_hp (hp);
+        hp += Bhsize_hd (hd);
+        if (caml_gc_sweep_counted < caml_gc_sweep_hp){
+          work -= Wsize_bsize (hp - caml_gc_sweep_hp);
+          caml_gc_sweep_counted = caml_gc_sweep_hp;
+        }
+        if (hp < limit &&  Color_hp (hp) == Caml_white){
+          if (Tag_hp (hp) == Custom_tag){
+            void (*final_fun)(value) = Custom_ops_val(Val_hp(hp))->finalize;
+            if (final_fun != NULL) final_fun(Val_hp(hp));
+          }
+          work -= Whsize_hp (hp);
+          caml_gc_sweep_counted = hp;
+          caml_gc_sweep_hp = caml_fl_extend_block (Bp_hp (caml_gc_sweep_hp));
+        }else{
+          mlsize_t wosz = Wosize_hd (hd);
+          int list = wosz > caml_fl_small_max ? 0 : wosz;
+          CAMLassert (wosz > 0);
+          caml_fl_merge[list] = Bp_hp (caml_gc_sweep_hp);
+          caml_gc_sweep_hp = hp;
+        }
         break;
       default:          /* gray or black */
         Assert (Color_hd (hd) == Caml_black);
         Hd_hp (hp) = Whitehd_hd (hd);
+        work -= Whsize_hd (hd);
+        caml_gc_sweep_hp = hp + Bhsize_hd (hd);
         break;
       }
       Assert (caml_gc_sweep_hp <= limit);
