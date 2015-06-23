@@ -193,7 +193,6 @@ static void mark_slice (intnat work)
   int slice_pointers = 0;
 #endif
 
-  if (caml_major_slice_begin_hook != NULL) (*caml_major_slice_begin_hook) ();
   caml_gc_message (0x40, "Marking %ld words\n", work);
   caml_gc_message (0x40, "Subphase = %ld\n", caml_gc_subphase);
   gray_vals_ptr = gray_vals_cur;
@@ -426,7 +425,6 @@ static void sweep_slice (intnat work)
   header_t hd;
   asize_t sz;
 
-  if (caml_major_slice_begin_hook != NULL) (*caml_major_slice_begin_hook) ();
   caml_gc_message (0x40, "Sweeping %ld words\n", work);
   while (work > 0){
     if (caml_gc_sweep_hp < limit){
@@ -489,7 +487,6 @@ static void sweep_slice (intnat work)
       }
     }
   }
-  if (caml_major_slice_end_hook != NULL) (*caml_major_slice_end_hook) ();
 }
 
 #ifdef CAML_INSTR
