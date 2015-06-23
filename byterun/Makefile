@@ -13,19 +13,18 @@
 
 include Makefile.common
 
-CFLAGS=-DCAML_NAME_SPACE -O $(BYTECCCOMPOPTS) $(IFLEXDIR)
+CFLAGS=-DCAML_NAME_SPACE $(BYTECCCOMPOPTS) $(IFLEXDIR)
 DFLAGS=-DCAML_NAME_SPACE -g -DDEBUG $(BYTECCCOMPOPTS) $(IFLEXDIR)
 IFLAGS=$(CFLAGS) -DCAML_INSTR
+MFLAGS=$(CFLAGS) -DMMAP_INTERVAL
 
 OBJS=$(COMMONOBJS) $(UNIX_OR_WIN32).o main.o
 DOBJS=$(OBJS:.o=.d.o) instrtrace.d.o
 IOBJS=$(OBJS:.o=.i.o)
+MOBJS=$(OBJS:.o=.m.o)
 PICOBJS=$(OBJS:.o=.pic.o)
 
-SHARED_LIBS_TMP=$(SUPPORTS_SHARED_LIBRARIES:%false=)
-SHARED_LIBS_DEPS=$(SHARED_LIBS_TMP:%true=libcamlrun_shared.so)
-
-all:: $(SHARED_LIBS_DEPS)
+all:: all-$(SHARED)
 
 ocamlrun$(EXE): libcamlrun.a prims.o
 	$(MKEXE) $(BYTECCLINKOPTS) -o ocamlrun$(EXE) \
@@ -38,29 +37,51 @@ ocamlrund$(EXE): libcamlrund.a prims.o
 ocamlruni$(EXE): prims.o libcamlruni.a
 	$(MKEXE) $(BYTECCLINKOPTS) -o $@ $^ $(BYTECCLIBS)
 
+ocamlrunm$(EXE): prims.o libcamlrunm.a
+	$(MKEXE) $(BYTECCLINKOPTS) -o $@ $^ $(BYTECCLIBS)
+
 libcamlrun.a: $(OBJS)
-	ar rc libcamlrun.a $(OBJS)
+	$(ARCMD) rc libcamlrun.a $(OBJS)
 	$(RANLIB) libcamlrun.a
 
 libcamlrund.a: $(DOBJS)
-	ar rc libcamlrund.a $(DOBJS)
+	$(ARCMD) rc libcamlrund.a $(DOBJS)
 	$(RANLIB) libcamlrund.a
 
 libcamlruni.a: $(IOBJS)
 	ar rc $@ $^
 	$(RANLIB) $@
 
+libcamlrunm.a: $(MOBJS)
+	ar rc $@ $^
+	$(RANLIB) $@
+
+all-noshared:
+.PHONY: all-noshared
+
+all-shared: libcamlrun_pic.a libcamlrun_shared.so
+.PHONY: all-shared
+
+libcamlrun_pic.a: $(PICOBJS)
+	ar rc libcamlrun_pic.a $(PICOBJS)
+	$(RANLIB) libcamlrun_pic.a
+
 libcamlrun_shared.so: $(PICOBJS)
 	$(MKDLL) -o libcamlrun_shared.so $(PICOBJS) $(BYTECCLIBS)
 
-install::
-	if test -f libcamlrun_shared.so; then \
-	  cp libcamlrun_shared.so $(INSTALL_LIBDIR)/libcamlrun_shared.so; fi
+install:: install-$(SHARED)
+
+install-noshared:
+.PHONY: install-noshared
+
+install-shared:
+	cp libcamlrun_shared.so $(INSTALL_LIBDIR)/libcamlrun_shared.so
+	cp libcamlrun_pic.a $(INSTALL_LIBDIR)/libcamlrun_pic.a
+	cd $(INSTALL_LIBDIR); $(RANLIB) libcamlrun_pic.a
+.PHONY: install-shared
 
 clean::
-	rm -f libcamlrun_shared.so
-
-.SUFFIXES: .d.o .i.o .pic.o
+	rm -f libcamlrun_shared.so libcamlrun_pic.a
 
 %.d.o: %.c
 	$(CC) -c $(DFLAGS) -o $@ $<
@@ -68,19 +89,20 @@ clean::
 %.i.o: %.c
 	$(CC) -c $(IFLAGS) -o $@ $<
 
-.c.pic.o:
-	ln -s -f $*.c $*.pic.c
-	$(CC) -c $(CFLAGS) $(SHAREDCCCOMPOPTS) $*.pic.c
-	rm $*.pic.c
+%.m.o: %.c
+	$(CC) -c $(MFLAGS) -o $@ $<
 
-clean::
-	rm -f *.pic.c
+%.pic.o: %.c
+	$(CC) -c $(CFLAGS) $(SHAREDCCCOMPOPTS) $< -o $@
 
-depend : prims.c opnames.h jumptbl.h version.h
-	-gcc -MM $(BYTECCCOMPOPTS) *.c > .depend
-	-gcc -MM $(BYTECCCOMPOPTS) -DDEBUG *.c | sed -e 's/\.o/.d.o/' >> .depend
-	-gcc -MM $(BYTECCCOMPOPTS) -DCAML_INSTR *.c | sed -e 's/\.o/.i.o/' >> .depend
-	-gcc -MM $(BYTECCCOMPOPTS) *.c | sed -e 's/\.o/.pic.o/' >> .depend
+depend : prims.c caml/opnames.h caml/jumptbl.h caml/version.h
+	-$(CC) -MM $(BYTECCCOMPOPTS) *.c > .depend
+	-$(CC) -MM $(BYTECCCOMPOPTS) -DDEBUG *.c | sed -e 's/\.o/.d.o/' >> .depend
+	-$(CC) -MM $(BYTECCCOMPOPTS) -DCAML_INSTR *.c | sed -e 's/\.o/.i.o/' \
+	       >> .depend
+	-$(CC) -MM $(BYTECCCOMPOPTS) -DMMAP_INTERVAL *.c | sed -e 's/\.o/.m.o/' \
+	       >> .depend
+	-$(CC) -MM $(BYTECCCOMPOPTS) *.c | sed -e 's/\.o/.pic.o/' >> .depend
 .PHONY: depend
 
 include .depend

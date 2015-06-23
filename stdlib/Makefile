@@ -45,39 +45,31 @@ installopt-prof:
 stdlib.p.cmxa: $(OBJS:.cmo=.p.cmx)
 	$(CAMLOPT) -a -o stdlib.p.cmxa $(OBJS:.cmo=.p.cmx)
 
-camlheader camlheader_ur: header.c ../config/Makefile
+camlheader target_camlheader camlheader_ur \
+camlheaderd target_camlheaderd \
+camlheaderi target_camlheaderi \
+camlheaderm target_camlheaderm: \
+  header.c ../config/Makefile
 	if $(SHARPBANGSCRIPTS); then \
-	  echo '#!$(BINDIR)/ocamlrun' > camlheader && \
+	  for suff in '' d i m; do \
+	    echo '#!$(BINDIR)/ocamlrun'$$suff > camlheader$$suff && \
+	    echo '#!$(TARGET_BINDIR)/ocamlrun'$$suff > target_camlheader$$suff; \
+	  done && \
 	  echo '#!' | tr -d '\012' > camlheader_ur; \
 	else \
-	  $(BYTECC) $(BYTECCCOMPOPTS) $(BYTECCLINKOPTS) \
-	            -DRUNTIME_NAME='"$(BINDIR)/ocamlrun"' \
-	            header.c -o tmpheader$(EXE) && \
-	  strip tmpheader$(EXE) && \
-	  mv tmpheader$(EXE) camlheader && \
+	  for suff in '' d i m; do \
+	    $(BYTECC) $(BYTECCCOMPOPTS) $(BYTECCLINKOPTS) \
+	              -DRUNTIME_NAME='"$(BINDIR)/ocamlrun'$$suff'"' \
+	              header.c -o tmpheader$(EXE) && \
+	    strip tmpheader$(EXE) && \
+	    mv tmpheader$(EXE) camlheader$$suff && \
+	    $(BYTECC) $(BYTECCCOMPOPTS) $(BYTECCLINKOPTS) \
+	              -DRUNTIME_NAME='"$(TARGET_BINDIR)/ocamlrun'$$suff'"' \
+	              header.c -o tmpheader$(EXE) && \
+	    strip tmpheader$(EXE) && \
+	    mv tmpheader$(EXE) target_camlheader$$suff; \
+	  done && \
 	  cp camlheader camlheader_ur; \
-	fi
-
-camlheaderd: header.c ../config/Makefile
-	if $(SHARPBANGSCRIPTS); then \
-	  echo '#!$(BINDIR)/ocamlrund' > camlheaderd; \
-	else \
-	  $(BYTECC) $(BYTECCCOMPOPTS) $(BYTECCLINKOPTS) \
-	            -DRUNTIME_NAME='"$(BINDIR)/ocamlrund"' \
-	            header.c -o tmpheader$(EXE) && \
-	  strip tmpheader$(EXE) && \
-	  mv tmpheader$(EXE) camlheaderd; \
-	fi
-
-camlheaderi: header.c ../config/Makefile
-	if $(SHARPBANGSCRIPTS); then \
-	  echo '#!$(BINDIR)/ocamlruni' > camlheaderi; \
-	else \
-	  $(BYTECC) $(BYTECCCOMPOPTS) $(BYTECCLINKOPTS) \
-	            -DRUNTIME_NAME='"$(BINDIR)/ocamlruni"' \
-	            header.c -o tmpheader$(EXE) && \
-	  strip tmpheader$(EXE) && \
-	  mv tmpheader$(EXE) camlheaderi; \
 	fi
 
 .PHONY: all allopt allopt-noprof allopt-prof install installopt

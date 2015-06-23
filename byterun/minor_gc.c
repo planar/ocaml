@@ -12,19 +12,19 @@
 /***********************************************************************/
 
 #include <string.h>
-#include "config.h"
-#include "fail.h"
-#include "finalise.h"
-#include "gc.h"
-#include "gc_ctrl.h"
-#include "major_gc.h"
-#include "memory.h"
-#include "minor_gc.h"
-#include "misc.h"
-#include "mlvalues.h"
-#include "roots.h"
-#include "signals.h"
-#include "weak.h"
+#include "caml/config.h"
+#include "caml/fail.h"
+#include "caml/finalise.h"
+#include "caml/gc.h"
+#include "caml/gc_ctrl.h"
+#include "caml/major_gc.h"
+#include "caml/memory.h"
+#include "caml/minor_gc.h"
+#include "caml/misc.h"
+#include "caml/mlvalues.h"
+#include "caml/roots.h"
+#include "caml/signals.h"
+#include "caml/weak.h"
 
 /* Pointers into the minor heap.
    [caml_young_base]
@@ -161,6 +161,12 @@ static void reset_table (struct caml_ref_table *tbl)
   tbl->base = tbl->ptr = tbl->threshold = tbl->limit = tbl->end = NULL;
 }
 
+static void clear_table (struct caml_ref_table *tbl)
+{
+    tbl->ptr = tbl->base;
+    tbl->limit = tbl->threshold;
+}
+
 /* Note: the GC is already initialized iff [caml_young_base != NULL]. */
 void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
 {
@@ -175,13 +181,48 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
   aging_wsz = aging_factor * alloc_wsz;
   full_wsz = alloc_wsz + aging_wsz;
 
+  Assert (alloc_wsz >= Minor_heap_min);
+  Assert (alloc_wsz <= Minor_heap_max);
   if (caml_young_ptr != caml_young_alloc_end){
     CAML_INSTR_INT ("force_minor/set_minor_heap_size@", 1);
+    caml_requested_minor_gc = 0;
+    caml_young_trigger = caml_young_alloc_mid;
+    caml_young_limit = caml_young_trigger;
     caml_minor_collection_empty ();
   }
   CAMLassert (caml_young_ptr == caml_young_alloc_end);
-  new_heap = caml_aligned_malloc (Bsize_wsize (full_wsz),
-                                  0, &new_heap_base);
+#ifdef MMAP_INTERVAL
+  {
+    static uintnat minor_heap_mapped_bsz = 0;
+    uintnat new_mapped_bsz;
+    new_mapped_bsz = Round_mmap_size (Bsize_wsize (full_wsz));
+    void *block;
+
+    CAMLassert (caml_young_start != NULL);
+    if (new_mapped_bsz > minor_heap_mapped_bsz){
+      uintnat addbsz = new_mapped_bsz - minor_heap_mapped_bsz;
+      new_heap = (char *) caml_young_start - addbsz;
+      block = caml_mmap_heap (new_heap, addbsz, PROT_READ | PROT_WRITE,
+                              MAP_FIXED);
+      if (block != new_heap){
+        if (minor_heap_mapped_bsz == 0){
+          caml_fatal_error ("cannot initialize minor heap: mmap failed\n");
+        }else{
+          caml_raise_out_of_memory ();
+        }
+      }
+      new_heap_base = new_heap;
+    }else if (new_mapped_bsz < minor_heap_mapped_bsz){
+      uintnat subbsz = minor_heap_mapped_bsz - new_mapped_bsz;
+      (void) caml_mmap_heap (caml_young_start, subbsz, PROT_NONE,
+                             MAP_FIXED | MAP_NORESERVE);
+      new_heap_base = new_heap = (char *) caml_young_start + subbsz;
+    }else{
+      new_heap_base = new_heap = caml_young_base;
+    }
+  }
+#else
+  new_heap = caml_aligned_malloc(Bsize_wsize (full_wsz), 0, &new_heap_base);
   if (new_heap == NULL) caml_raise_out_of_memory();
   if (caml_page_table_add(In_young, new_heap,
                           new_heap + Bsize_wsize (full_wsz)) != 0)
@@ -191,6 +232,7 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
     caml_page_table_remove(In_young, caml_young_start, caml_young_end);
     free (caml_young_base);
   }
+#endif
   caml_young_base = new_heap_base;
   caml_young_start = (value *) new_heap;
   caml_young_end = caml_young_start + full_wsz;

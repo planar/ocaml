@@ -14,19 +14,19 @@
 #include <limits.h>
 #include <math.h>
 
-#include "compact.h"
-#include "custom.h"
-#include "config.h"
-#include "fail.h"
-#include "finalise.h"
-#include "freelist.h"
-#include "gc.h"
-#include "gc_ctrl.h"
-#include "major_gc.h"
-#include "misc.h"
-#include "mlvalues.h"
-#include "roots.h"
-#include "weak.h"
+#include "caml/compact.h"
+#include "caml/custom.h"
+#include "caml/config.h"
+#include "caml/fail.h"
+#include "caml/finalise.h"
+#include "caml/freelist.h"
+#include "caml/gc.h"
+#include "caml/gc_ctrl.h"
+#include "caml/major_gc.h"
+#include "caml/misc.h"
+#include "caml/mlvalues.h"
+#include "caml/roots.h"
+#include "caml/weak.h"
 
 #if defined (NATIVE_CODE) && defined (NO_NAKED_POINTERS)
 #define NATIVE_CODE_AND_NO_NAKED_POINTERS
@@ -81,6 +81,8 @@ static unsigned long major_gc_counter = 0;
    It is unsafe to begin sweeping until it reaches 0.
  */
 uintnat caml_minor_marking_counter = 0;
+
+void (*caml_major_gc_hook)(void) = NULL;
 
 static void realloc_gray_vals (void)
 {
@@ -188,6 +190,7 @@ static void mark_slice (intnat work)
   int slice_pointers = 0;
 #endif
 
+  if (caml_major_slice_begin_hook != NULL) (*caml_major_slice_begin_hook) ();
   caml_gc_message (0x40, "Marking %ld words\n", work);
   caml_gc_message (0x40, "Subphase = %ld\n", caml_gc_subphase);
   gray_vals_ptr = gray_vals_cur;
@@ -245,7 +248,7 @@ static void mark_slice (intnat work)
             }
 #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
             /* See [caml_darken] for a description of this assertion. */
-            CAMLassert (Is_in_heap (child) || Is_black_hd (hd));
+            CAMLassert (Is_in_heap (child) || Is_black_hd (chd));
 #endif
             if (Is_white_hd (chd)){
               Hd_val (child) = Grayhd_hd (chd);
@@ -399,6 +402,7 @@ static void mark_slice (intnat work)
         limit = chunk + Chunk_size (chunk);
         work = 0;
         caml_fl_size_at_phase_change = caml_fl_cur_size;
+        if (caml_major_gc_hook) (*caml_major_gc_hook)();
       }
         break;
       default: Assert (0);
@@ -418,6 +422,7 @@ static void sweep_slice (intnat work)
   header_t hd;
   asize_t sz;
 
+  if (caml_major_slice_begin_hook != NULL) (*caml_major_slice_begin_hook) ();
   caml_gc_message (0x40, "Sweeping %ld words\n", work);
   while (work > 0){
     if (caml_gc_sweep_hp < limit){
@@ -457,6 +462,7 @@ static void sweep_slice (intnat work)
       }
     }
   }
+  if (caml_major_slice_end_hook != NULL) (*caml_major_slice_end_hook) ();
 }
 
 #ifdef CAML_INSTR
@@ -707,23 +713,12 @@ void caml_finish_major_cycle (void)
   caml_allocated_words = 0;
 }
 
-/* Make sure the request is at least Heap_chunk_min and round it up
-   to a multiple of the page size.
+/* Call this function to make sure [request] is greater than or equal
+   to both [Heap_chunk_min] and the current heap increment.
 */
-static asize_t clip_heap_chunk_size (asize_t request)
+asize_t caml_clip_heap_chunk_size (asize_t bsz)
 {
-  if (request < Bsize_wsize (Heap_chunk_min)){
-    request = Bsize_wsize (Heap_chunk_min);
-  }
-  return ((request + Page_size - 1) >> Page_log) << Page_log;
-}
-
-/* Compute the heap increment, make sure the request is at least that big,
-   then call clip_heap_chunk_size, then make sure the result is >= request.
-*/
-asize_t caml_round_heap_chunk_size (asize_t request)
-{
-  asize_t result = request;
+  asize_t result = bsz;
   uintnat incr;
 
   /* Compute the heap increment as a byte size. */
@@ -736,11 +731,8 @@ asize_t caml_round_heap_chunk_size (asize_t request)
   if (result < incr){
     result = incr;
   }
-  result = clip_heap_chunk_size (result);
-
-  if (result < request){
-    caml_raise_out_of_memory ();
-    return 0; /* not reached */
+  if (result < Bsize_wsize (Heap_chunk_min)){
+    result = Bsize_wsize (Heap_chunk_min);
   }
   return result;
 }
@@ -749,19 +741,21 @@ void caml_init_major_heap (asize_t heap_size)
 {
   int i;
 
-  caml_stat_heap_size = clip_heap_chunk_size (heap_size);
+  caml_stat_heap_size = caml_clip_heap_chunk_size (heap_size);
   caml_stat_top_heap_size = caml_stat_heap_size;
   Assert (caml_stat_heap_size % Page_size == 0);
   caml_heap_start = (char *) caml_alloc_for_heap (caml_stat_heap_size);
   if (caml_heap_start == NULL)
-    caml_fatal_error ("Fatal error: not enough memory for the initial heap.\n");
+    caml_fatal_error ("Fatal error: cannot allocate initial major heap.\n");
   Chunk_next (caml_heap_start) = NULL;
+  caml_stat_heap_size = Chunk_size (caml_heap_start);
   caml_stat_heap_chunks = 1;
+  caml_stat_top_heap_size = caml_stat_heap_size;
 
   if (caml_page_table_add(In_heap, caml_heap_start,
                           caml_heap_start + caml_stat_heap_size) != 0) {
-    caml_fatal_error ("Fatal error: not enough memory "
-                      "for the initial page table.\n");
+    caml_fatal_error ("Fatal error: cannot allocate "
+                      "initial page table.\n");
   }
 
   caml_fl_init_merge ();

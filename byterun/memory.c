@@ -13,17 +13,30 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "fail.h"
-#include "freelist.h"
-#include "gc.h"
-#include "gc_ctrl.h"
-#include "major_gc.h"
-#include "memory.h"
-#include "major_gc.h"
-#include "minor_gc.h"
-#include "misc.h"
-#include "mlvalues.h"
-#include "signals.h"
+#include "caml/address_class.h"
+#include "caml/fail.h"
+#include "caml/freelist.h"
+#include "caml/gc.h"
+#include "caml/gc_ctrl.h"
+#include "caml/major_gc.h"
+#include "caml/memory.h"
+#include "caml/major_gc.h"
+#include "caml/minor_gc.h"
+#include "caml/misc.h"
+#include "caml/mlvalues.h"
+#include "caml/signals.h"
+
+int caml_huge_fallback_count = 0;
+/* Number of times that mmapping big pages fails and we fell back to small
+   pages. This counter is available to the program through
+   [Gc.huge_fallback_count].
+*/
+
+uintnat caml_use_huge_pages = 0;
+/* True iff the program allocates heap chunks by mmapping huge pages.
+   This is set when parsing [OCAMLRUNPARAM] and must stay constant
+   after that.
+*/
 
 extern uintnat caml_percent_free;                   /* major_gc.c */
 
@@ -69,6 +82,10 @@ int caml_page_table_lookup(void * addr)
 {
   uintnat h, e;
 
+#ifdef MMAP_INTERVAL
+  if (Is_in_heap (addr)) return In_heap;
+  if (Is_in_heap_or_young (addr)) return In_young;
+#endif
   h = Hash(Page(addr));
   /* The first hit is almost always successful, so optimize for this case */
   e = caml_page_table.entries[h];
@@ -216,25 +233,167 @@ int caml_page_table_remove(int kind, void * start, void * end)
   return 0;
 }
 
+
+#ifdef MMAP_INTERVAL
+
+/* The contiguous heap, an idea due to Jacques-Henri Jourdan:
+
+   We use mmap to carve out a sizeable interval of addresses
+   (2 terabytes, which we reserve but do not map) for the heaps,
+   then we allocate heap chunks inside this space (still with mmap).
+   This guarantees that all heap addresses are within this interval,
+   and nothing else can be located in that interval. Then
+   [Is_in_heap] becomes a subtraction and comparison, instead of
+   a hash table access. Likewise with [Is_in_heap_or_young]. These
+   macros are used so often (especially in [modify]) that we get
+   a 5% to 10% improvement in speed for most OCaml programs.
+
+   As far as I know, this trick cannot be done in Windows or MacOSX
+   because there is no way to reserve an interval of addresses
+   without mapping it.
+
+   Of course, this only works on 64-bit machines.
+*/
+
+static void *raw_heap_start = NULL, *raw_heap_end = NULL;
+
+void *caml_mmap_heap (void *addr, size_t length, int prot, int flags)
+{
+  void *result;
+  /* First try to allocate huge pages. */
+#ifdef HAS_HUGE_PAGES
+  result = mmap (addr, length, prot,
+                 flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,
+                 -1, 0);
+#else
+  result = MAP_FAILED;
+#endif
+  /* Then fall back to normal pages unless the user required huge pages. */
+  if (result == MAP_FAILED && !caml_use_huge_pages){
+    result = mmap (addr, length, prot,
+                   flags | MAP_PRIVATE | MAP_ANONYMOUS,
+                   -1, 0);
+    if (result != MAP_FAILED) ++caml_huge_fallback_count;
+  }
+  return result;
+}
+
+int caml_init_alloc_for_heap (void)
+{
+  char *block;
+
+  block = caml_mmap_heap (NULL, HEAP_INTERVAL_SIZE, PROT_NONE, MAP_NORESERVE);
+  if (block == MAP_FAILED) return -1;
+  raw_heap_start = raw_heap_end = block;
+  caml_young_start = caml_young_end = block + HEAP_INTERVAL_SIZE;
+  return 0;
+}
+
+char *caml_alloc_for_heap (asize_t request)
+{
+  uintnat size = Round_mmap_size (sizeof (heap_chunk_head) + request);
+  void *block;
+  char *mem;
+
+  CAMLassert (raw_heap_end != NULL);
+  if ((char *) raw_heap_end + size
+      > (char *) raw_heap_start + HEAP_INTERVAL_SIZE / 2){
+    /* No room for growing heap. */
+    return NULL;
+  }
+  block = caml_mmap_heap (raw_heap_end, size, PROT_READ | PROT_WRITE,
+                          MAP_FIXED);
+  if (block == MAP_FAILED) return NULL;
+  raw_heap_end = (char *) block + size;
+  mem = (char *) block + sizeof (heap_chunk_head);
+  Chunk_size (mem) = size - sizeof (heap_chunk_head);
+  Chunk_block (mem) = block;
+  return mem;
+}
+
+void caml_free_for_heap (char *mem)
+{
+  char *block;
+
+  CAMLassert (mem + Chunk_size (mem) == raw_heap_end);
+  raw_heap_end = mem - sizeof (heap_chunk_head);
+  block = caml_mmap_heap (raw_heap_end,
+                          Chunk_size (mem) + sizeof (heap_chunk_head),
+                          PROT_NONE, MAP_FIXED | MAP_NORESERVE);
+  CAMLassert (block == raw_heap_end);
+}
+
+/* Reduce the size of a heap chunk. This chunk must be the last one. */
+void caml_shrink_chunk (char *chunk, uintnat req_bsz)
+{
+  uintnat old_size = Chunk_size (chunk) + sizeof (heap_chunk_head);
+  uintnat new_size = Round_mmap_size (req_bsz + sizeof (heap_chunk_head));
+  void *block;
+
+  CAMLassert (chunk + Chunk_size (chunk) == raw_heap_end);
+  CAMLassert (new_size <= old_size);
+  if (new_size < old_size){
+    uintnat diff = old_size - new_size;
+    raw_heap_end -= diff;
+    block = caml_mmap_heap (raw_heap_end, diff, PROT_NONE,
+                            MAP_FIXED | MAP_NORESERVE);
+    CAMLassert (block == raw_heap_end);
+    Chunk_size (chunk) = new_size - sizeof (heap_chunk_head);
+    caml_stat_heap_size -= diff;
+  }
+}
+
+#else /* MMAP_INTERVAL */
+
+/* Initialize the [alloc_for_heap] system.
+   This function must be called exactly once, and it must be called
+   before the first call to [alloc_for_heap].
+   It returns 0 on success and -1 on failure.
+*/
+int caml_init_alloc_for_heap (void)
+{
+  return 0;
+}
+
 /* Allocate a block of the requested size, to be passed to
    [caml_add_to_heap] later.
-   [request] must be a multiple of [Page_size].
-   [caml_alloc_for_heap] returns NULL if the request cannot be satisfied.
-   The returned pointer is a hp, but the header must be initialized by
-   the caller.
+   [request] will be rounded up to some implementation-dependent size.
+   The caller must use [Chunk_size] on the result to recover the actual
+   size.
+   Return NULL if the request cannot be satisfied. The returned pointer
+   is a hp, but the header (and the contents) must be initialized by the
+   caller.
 */
 char *caml_alloc_for_heap (asize_t request)
 {
-  char *mem;
-  void *block;
-                                              Assert (request % Page_size == 0);
-  mem = caml_aligned_malloc (request + sizeof (heap_chunk_head),
-                             sizeof (heap_chunk_head), &block);
-  if (mem == NULL) return NULL;
-  mem += sizeof (heap_chunk_head);
-  Chunk_size (mem) = request;
-  Chunk_block (mem) = block;
-  return mem;
+  if (caml_use_huge_pages){
+#ifdef HAS_HUGE_PAGES
+    uintnat size = Round_mmap_size (sizeof (heap_chunk_head) + request);
+    void *block;
+    char *mem;
+    block = mmap (NULL, size, PROT_READ | PROT_WRITE,
+                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+    if (block == MAP_FAILED) return NULL;
+    mem = (char *) block + sizeof (heap_chunk_head);
+    Chunk_size (mem) = size - sizeof (heap_chunk_head);
+    Chunk_block (mem) = block;
+    return mem;
+#else
+    return NULL;
+#endif
+  }else{
+    char *mem;
+    void *block;
+
+    request = ((request + Page_size - 1) >> Page_log) << Page_log;
+    mem = caml_aligned_malloc (request + sizeof (heap_chunk_head),
+                               sizeof (heap_chunk_head), &block);
+    if (mem == NULL) return NULL;
+    mem += sizeof (heap_chunk_head);
+    Chunk_size (mem) = request;
+    Chunk_block (mem) = block;
+    return mem;
+  }
 }
 
 /* Use this function to free a block allocated with [caml_alloc_for_heap]
@@ -242,8 +401,17 @@ char *caml_alloc_for_heap (asize_t request)
 */
 void caml_free_for_heap (char *mem)
 {
-  free (Chunk_block (mem));
+  if (caml_use_huge_pages){
+#ifdef HAS_HUGE_PAGES
+    munmap (Chunk_block (mem), Chunk_size (mem) + sizeof (heap_chunk_head));
+#else
+    CAMLassert (0);
+#endif
+  }else{
+    free (Chunk_block (mem));
+  }
 }
+#endif /* MMAP_INTERVAL */
 
 /* Take a chunk of memory as argument, which must be the result of a
    call to [caml_alloc_for_heap], and insert it into the heap chaining.
@@ -258,10 +426,9 @@ void caml_free_for_heap (char *mem)
 */
 int caml_add_to_heap (char *m)
 {
-                                     Assert (Chunk_size (m) % Page_size == 0);
 #ifdef DEBUG
   /* Should check the contents of the block. */
-#endif /* debug */
+#endif /* DEBUG */
 
   caml_gc_message (0x04, "Growing heap to %luk bytes\n",
                    (caml_stat_heap_size + Chunk_size (m)) / 1024);
@@ -308,13 +475,13 @@ static char *expand_heap (mlsize_t request)
 
   Assert (request <= Max_wosize);
   over_request = request + request / 100 * caml_percent_free;
-  malloc_request = caml_round_heap_chunk_size (Bhsize_wosize (over_request));
+  malloc_request = caml_clip_heap_chunk_size (Bhsize_wosize (over_request));
   mem = caml_alloc_for_heap (malloc_request);
   if (mem == NULL){
     caml_gc_message (0x04, "No room for growing heap\n", 0);
     return NULL;
   }
-  remain = malloc_request;
+  remain = Chunk_size (mem);
   prev = hp = mem;
   /* FIXME find a way to do this with a call to caml_make_free_blocks */
   while (Wosize_bhsize (remain) > Max_wosize){

@@ -11,25 +11,26 @@
 /*                                                                     */
 /***********************************************************************/
 
-#include "alloc.h"
-#include "backtrace.h"
-#include "compact.h"
-#include "custom.h"
-#include "fail.h"
-#include "finalise.h"
-#include "freelist.h"
-#include "gc.h"
-#include "gc_ctrl.h"
-#include "instrtrace.h"
-#include "major_gc.h"
-#include "minor_gc.h"
-#include "misc.h"
-#include "mlvalues.h"
-#include "signals.h"
+#include "caml/alloc.h"
+#include "caml/backtrace.h"
+#include "caml/compact.h"
+#include "caml/custom.h"
+#include "caml/fail.h"
+#include "caml/finalise.h"
+#include "caml/freelist.h"
+#include "caml/gc.h"
+#include "caml/gc_ctrl.h"
+#include "caml/instrtrace.h"
+#include "caml/major_gc.h"
+#include "caml/memory.h"
+#include "caml/minor_gc.h"
+#include "caml/misc.h"
+#include "caml/mlvalues.h"
+#include "caml/signals.h"
 #ifdef NATIVE_CODE
 #include "stack.h"
 #else
-#include "stacks.h"
+#include "caml/stacks.h"
 #endif
 
 #ifndef NATIVE_CODE
@@ -322,6 +323,11 @@ CAMLprim value caml_gc_counters(value v)
   CAMLreturn (res);
 }
 
+CAMLprim value caml_gc_huge_fallback_count (value v)
+{
+  return Val_long (caml_huge_fallback_count);
+}
+
 CAMLprim value caml_gc_get(value v)
 {
   CAMLparam0 ();   /* v is ignored */
@@ -595,6 +601,9 @@ void caml_init_gc (uintnat minor_size, uintnat age_limit, uintnat size_factor,
     Bsize_wsize (caml_normalize_heap_increment (major_size));
 
   CAML_INSTR_INIT ();
+  if (caml_init_alloc_for_heap () != 0){
+    caml_fatal_error ("cannot initialize heap: mmap failed\n");
+  }
   if (caml_page_table_initialize(Bsize_wsize(minor_size) + major_heap_size)){
     caml_fatal_error ("OCaml runtime error: cannot initialize page table\n");
   }
@@ -635,6 +644,8 @@ CAMLprim value caml_runtime_variant (value unit)
   return caml_copy_string ("d");
 #elif defined (CAML_INSTR)
   return caml_copy_string ("i");
+#elif defined (MMAP_INTERVAL)
+  return caml_copy_string ("m");
 #else
   return caml_copy_string ("");
 #endif
@@ -646,7 +657,7 @@ CAMLprim value caml_runtime_parameters (value unit)
 {
   CAMLassert (unit == Val_unit);
   return caml_alloc_sprintf
-    ("a=%d,%s,i=%lu,"
+    ("a=%d,%s,H=%lu,i=%lu,"
 #ifndef NATIVE_CODE
      "l=%lu,"
 #endif
@@ -658,6 +669,7 @@ CAMLprim value caml_runtime_parameters (value unit)
      /* a */ caml_allocation_policy,
      /* b */ caml_backtrace_active ? "b=1" : "",   /* FIXME simplify with new parsing */
      /* h */ /* missing */ /* FIXME add when changed to min_heap_size */
+     /* H */ caml_use_huge_pages,
      /* i */ caml_major_heap_increment,
 #ifndef NATIVE_CODE
      /* l */ caml_max_stack_size,

@@ -2,7 +2,7 @@
 (*                                                                       *)
 (*                                OCaml                                  *)
 (*                                                                       *)
-(*         Damien Doligez, Jane Street Capital                           *)
+(*                 Damien Doligez, Jane Street Group, LLC                *)
 (*                                                                       *)
 (*   Copyright 2015 Institut National de Recherche en Informatique et    *)
 (*   en Automatique.  All rights reserved.  This file is distributed     *)
@@ -12,8 +12,7 @@
 
 Random.init 12345;;
 
-let size = 10000;;
-let duration = 200;;
+let size = 1000;;
 
 type block = int array;;
 
@@ -28,76 +27,48 @@ type bunch = {
 };;
 
 let data =
+  Array.init size (fun i ->
+    let n = 1 + Random.int size in
     {
-      objs = Array.make size (Absent 0);
-      wp = Weak.create size;
+      objs = Array.make n (Absent 0);
+      wp = Weak.create n;
     }
+  )
 ;;
 
 let gccount () = (Gc.quick_stat ()).Gc.major_collections;;
 
-(*
-   Check the correctness condition on the data at [i]:
+(* Check the correctness condition on the data at (i,j):
    1. if the block is present, the weak pointer must be full
    2. if the block was removed at GC n, and the weak pointer is still
       full, then the current GC must be at most n+1.
-*)
-let check i =
-  let gc1 = gccount () in
-  match data.objs.(i), Weak.check data.wp i with
-  | Present _, false ->
-    Printf.eprintf "error (early erasure):\n\
-                   \  strong pointer is still present,\n\
-                   \  weak pointer was erased\n";
-      exit 3;
-  | Absent n, true ->
-    if gc1 > n+1 then begin
-      Printf.eprintf "error (late erasure):\n\
-                     \  strong pointer erased at GC %d\n\
-                     \  weak pointer still present at GC %d\n" n gc1;
-      exit 3;
-    end
-  | _ -> ()
-;;
 
-let replace gc1 i =
-  let x = Array.make (1 + Random.int 10) 42 in
-  data.objs.(i) <- Present x;
-  Weak.set data.wp i (Some x);
-;;
-
-(* This function allows its caller to check for the presence of data
-   without holding on to its value as pattern-matching does when
-   compiled to byte-code. *)
-let is_present i =
-  match data.objs.(i) with
-  | Present _ -> true
-  | Absent _ -> false
-;;
-
-(*
-   Modify the data at [i] in one of the following ways:
+   Then modify the data in one of the following ways:
    1. if the block and weak pointer are absent, fill them
    2. if the block and weak pointer are present, randomly erase the block
-   3. in other cases, check the entry and randomly overwrite it
 *)
-let change i =
+let check_and_change i j =
   let gc1 = gccount () in
-  match is_present i, Weak.check data.wp i with
-  | false, false -> replace gc1 i;
-  | true, true ->
-    if Random.int 2 = 0 then begin
-      data.objs.(i) <- Absent gc1;
+  match data.(i).objs.(j), Weak.check data.(i).wp j with
+  | Present x, false -> assert false
+  | Absent n, true -> assert (gc1 <= n+1)
+  | Absent _, false ->
+    let x = Array.make (1 + Random.int 10) 42 in
+    data.(i).objs.(j) <- Present x;
+    Weak.set data.(i).wp j (Some x);
+  | Present _, true ->
+    if Random.int 10 = 0 then begin
+      data.(i).objs.(j) <- Absent gc1;
       let gc2 = gccount () in
-      if gc1 <> gc2 then data.objs.(i) <- Absent gc2;
+      if gc1 <> gc2 then data.(i).objs.(j) <- Absent gc2;
     end
-  | _ ->
-    check i;
-    if Random.int 2 = 0 then replace gc1 i;
 ;;
 
-for _t = 0 to duration do
-  for i = 0 to size - 1 do
-    change i;
-  done;
+let dummy = ref [||];;
+
+while gccount () < 20 do
+  dummy := Array.make (Random.int 300) 0;
+  let i = Random.int size in
+  let j = Random.int (Array.length data.(i).objs) in
+  check_and_change i j;
 done

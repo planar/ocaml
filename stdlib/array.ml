@@ -28,7 +28,11 @@ external unsafe_blit :
 external make_float: int -> float array = "caml_make_float_vect"
 
 let init l f =
-  if l = 0 then [||] else begin
+  if l = 0 then [||] else
+  if l < 0 then invalid_arg "Array.init"
+  (* See #6575. We could also check for maximum array size, but this depends
+     on whether we create a float array or a regular one... *)
+  else
     let f0 = f 0 in
     let res =
       if Obj.tag (Obj.repr f0) = Obj.double_tag
@@ -43,7 +47,6 @@ let init l f =
       unsafe_set res i (f i)
     done;
     res
-  end
 
 let make_matrix sx sy init =
   let res = create sx [||] in

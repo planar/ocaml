@@ -15,27 +15,28 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "callback.h"
-#include "backtrace.h"
-#include "custom.h"
-#include "debugger.h"
-#include "fail.h"
-#include "freelist.h"
-#include "gc.h"
-#include "gc_ctrl.h"
-#include "intext.h"
-#include "memory.h"
-#include "misc.h"
-#include "mlvalues.h"
-#include "osdeps.h"
-#include "printexc.h"
+#include "caml/callback.h"
+#include "caml/backtrace.h"
+#include "caml/custom.h"
+#include "caml/debugger.h"
+#include "caml/fail.h"
+#include "caml/freelist.h"
+#include "caml/gc.h"
+#include "caml/gc_ctrl.h"
+#include "caml/intext.h"
+#include "caml/memory.h"
+#include "caml/misc.h"
+#include "caml/mlvalues.h"
+#include "caml/osdeps.h"
+#include "caml/printexc.h"
 #include "stack.h"
-#include "sys.h"
+#include "caml/sys.h"
 #ifdef HAS_UI
-#include "ui.h"
+#include "caml/ui.h"
 #endif
 
 extern int caml_parser_trace;
+
 CAMLexport header_t caml_atom_table[256];
 char * caml_code_area_start, * caml_code_area_end;
 
@@ -132,6 +133,7 @@ static void parse_camlrunparam(void)
       case 's': scanmult (opt, &minor_heap_init); break;
       case 'i': scanmult (opt, &heap_chunk_init); break;
       case 'h': scanmult (opt, &heap_size_init); break;
+      case 'H': scanmult (opt, &caml_use_huge_pages); break;
       case 'l': scanmult (opt, &max_stack_init); break;
       case 'o': scanmult (opt, &percent_free_init); break;
       case 'O': scanmult (opt, &max_percent_free_init); break;

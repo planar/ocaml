@@ -59,6 +59,10 @@ typedef char * addr;
 #define CAMLweakdef
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* GC timing hooks. These can be assigned by the user.
    [caml_minor_gc_begin_hook] must not allocate nor change any heap value.
    The others can allocate and even call back to OCaml code.
@@ -276,5 +280,9 @@ extern void CAML_INSTR_ATEXIT (void);
 #endif /* CAML_INSTR */
 
 /* </private> */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* CAML_MISC_H */

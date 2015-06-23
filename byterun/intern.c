@@ -13,22 +13,22 @@
 
 /* Structured input, compact format */
 
-/* The interface of this file is "intext.h" */
+/* The interface of this file is "caml/intext.h" */
 
 #include <string.h>
 #include <stdio.h>
-#include "alloc.h"
-#include "callback.h"
-#include "custom.h"
-#include "fail.h"
-#include "gc.h"
-#include "intext.h"
-#include "io.h"
-#include "md5.h"
-#include "memory.h"
-#include "mlvalues.h"
-#include "misc.h"
-#include "reverse.h"
+#include "caml/alloc.h"
+#include "caml/callback.h"
+#include "caml/custom.h"
+#include "caml/fail.h"
+#include "caml/gc.h"
+#include "caml/intext.h"
+#include "caml/io.h"
+#include "caml/md5.h"
+#include "caml/memory.h"
+#include "caml/mlvalues.h"
+#include "caml/misc.h"
+#include "caml/reverse.h"
 
 static unsigned char * intern_src;
 /* Reading pointer in block holding input data. */
@@ -536,8 +536,7 @@ static void intern_add_to_heap(mlsize_t whsize)
   /* Add new heap chunk to heap if needed */
   if (intern_extra_block != NULL) {
     /* If heap chunk not filled totally, build free block at end */
-    asize_t request =
-      ((Bsize_wsize(whsize) + Page_size - 1) >> Page_log) << Page_log;
+    asize_t request = Chunk_size (intern_extra_block);
     header_t * end_extra_block =
       (header_t *) intern_extra_block + Wsize_bsize(request);
     Assert(intern_dest <= end_extra_block);
