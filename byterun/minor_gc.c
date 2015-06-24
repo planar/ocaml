@@ -372,7 +372,7 @@ CAMLexport void caml_gc_dispatch (void)
     caml_final_do_calls ();
     CAML_INSTR_TIME (tmr, "dispatch/finalizers");
 
-    if (caml_young_ptr - caml_young_alloc_start < Max_young_whsize){
+    while (caml_young_ptr - caml_young_alloc_start < Max_young_whsize){
       /* The finalizers have filled up the minor heap, we must do
          a second minor collection. */
       caml_requested_minor_gc = 0;
