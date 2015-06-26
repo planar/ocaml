@@ -179,7 +179,11 @@ CAMLprim value caml_update_dummy(value dummy, value newval)
     }
   }else{
     for (i = 0; i < size; i++){
+      if (Field (newval, i) == caml_scan_separator) break;
       caml_modify (&Field(dummy, i), Field(newval, i));
+    }
+    for ( ; i < size; i++){
+      Field (dummy, i) = Field (newval, i);
     }
   }
   return Val_unit;

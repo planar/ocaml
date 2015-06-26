@@ -147,6 +147,25 @@ static intnat compare_val(value v1, value v2, int total)
        use address comparison. Since both addresses are 2-aligned,
        shift lsb off to avoid overflow in subtraction. */
     if (! Is_in_value_area(v1) || ! Is_in_value_area(v2)) {
+      if (v1 == caml_scan_separator){
+        if (v2 != caml_scan_separator) return LESS;
+        /* The remainder of the objects is non-pointer data. */
+        /* FIXME we compare word-by-word, which gives the wrong result
+           in case of floats. */
+        /* First check that there are more fields (i.e. we haven't popped
+           the stack item yet). */
+        if (*(sp->v1) == caml_scan_separator
+            && *(sp->v2) == caml_scan_separator){
+          for (i = 1; i <= sp->count; i++){
+            if (Long_val (sp->v1[i]) != Long_val (sp->v1[i])){
+              return Long_val (sp->v1[i]) - Long_val (sp->v1[i]);
+            }
+          }
+          sp--;
+        }
+        goto next_item;
+      }
+      if (v2 == caml_scan_separator) return GREATER;
       if (v1 == v2) goto next_item;
       return (v1 >> 1) - (v2 >> 1);
       /* Subtraction above cannot result in UNORDERED */
@@ -245,8 +264,8 @@ static intnat compare_val(value v1, value v2, int total)
       if (sz1 > 1) {
         sp++;
         if (sp >= compare_stack_limit) sp = compare_resize_stack(sp);
-        sp->v1 = &Field(v1, 1);
-        sp->v2 = &Field(v2, 1);
+        sp->v1 = &Field(v1, 0);
+        sp->v2 = &Field(v2, 0);
         sp->count = sz1 - 1;
       }
       /* Continue comparison with first field */
@@ -258,8 +277,8 @@ static intnat compare_val(value v1, value v2, int total)
   next_item:
     /* Pop one more item to compare, if any */
     if (sp == compare_stack) return EQUAL; /* we're done */
-    v1 = *((sp->v1)++);
-    v2 = *((sp->v2)++);
+    v1 = *(++(sp->v1));
+    v2 = *(++(sp->v2));
     if (--(sp->count) == 0) sp--;
   }
 }

@@ -212,7 +212,10 @@ static void do_compaction (void)
         }
 
         if (t < No_scan_tag){
-          for (i = 1; i < sz; i++) invert_pointer_at (&(p[i]));
+          for (i = 1; i < sz; i++){
+            if (p[i] == caml_scan_separator) break;
+            invert_pointer_at (&(p[i]));
+          }
         }
         p += sz;
       }
