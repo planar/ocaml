@@ -47,8 +47,6 @@
        - active space (between GCs)
        They are 180 degrees out of phase: when one is From, the other
        is To, and when one is Active, the other is Inactive.
-       Blocks in this interval have an additional word just before
-       their header: their generation counter.
 
        Layout:
          caml_young_start = caml_young_alloc_start
@@ -63,14 +61,16 @@
        - [caml_young_ptr] is where the next allocation will take place.
        - [caml_young_trigger] is how far we can allocate before triggering
          [caml_gc_dispatch]. Currently, it is either [caml_young_alloc_start]
-         or the mid-point of the allocation arena.
+         or [caml_young_alloc_mid].
        - [caml_young_limit] is the pointer that is compared to
          [caml_young_ptr] for allocation. It is either
          [caml_young_alloc_end] if a signal is pending and we are in
-         native code, or [caml_young_trigger].
+         native code, or [caml_young_trigger] otherwise.
    [caml_young_aging_ptr]
        This is the allocation pointer for the aging area. It is always
        within the current To/Active space.
+   [caml_young_aging_scan]
+       Pointer to values in the To space that have not been visited yet.
 */
 
 asize_t caml_minor_heap_wsz, caml_minor_aging_wsz;
@@ -87,6 +87,7 @@ CAMLexport value *caml_young_aging_start = NULL,
                  *caml_young_aging_mid = NULL,
                  *caml_young_aging_end = NULL;
 CAMLexport value *caml_young_aging_ptr = NULL;
+static value caml_young_aging_scan;
 
 /* [aging_phase] is always 0 or 1.
    When it is 0, [caml_young_aging_start]...[caml_young_aging_mid] is the
@@ -94,11 +95,6 @@ CAMLexport value *caml_young_aging_ptr = NULL;
    [aging_phase] changes at the beginning of each minor collection.
 */
 static int aging_phase = 0;
-
-/* [caml_special_promote_value] holds a value that must be promoted
-   to the major heap by the minor GC, regardless of its age.
-*/
-CAMLexport value caml_special_promote_value = 0;
 
 CAMLexport struct caml_ref_table
   caml_ref_table = { NULL, NULL, NULL, NULL, NULL, 0, 0},
@@ -112,16 +108,9 @@ extern uintnat caml_global_event_count;  /* defined in debugger.c */
 static asize_t caml_allocated_in_aging;
 #endif /* DEBUG */
 
-/* [promoted_list] holds a chained list of values that were promoted
-   to the major heap by this collection. */
-static value promoted_list;
-
-/* Macros for managing the aging heap:
-   Age(v): access the age field (located before the header) (read/write).
-   Is_in_from_space(v): true iff [v] is in the From/Active space or in
-     the allocation space.
-*/
-#define Age(v) (((value *)(v))[-2])
+static value *caml_minor_todo_base, *caml_minor_todo_ptr;
+/* Stack of values that have been promoted to the major heap but
+   not visited yet. */
 
 /* Note: [Is_in_from_space (v)] implies [Is_young (v)]. */
 #define Is_in_from_space(v)                                                   \
@@ -168,21 +157,23 @@ static void clear_table (struct caml_ref_table *tbl)
 }
 
 /* Note: the GC is already initialized iff [caml_young_base != NULL]. */
-void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
+/* Allocate 10/3 (3.333) times the size passed as parameter:
+   1 for the allocation arena
+   2 for the aging area (1 each for the From and To spaces)
+   1/3 for the todo stack
+   +1 word for caml_special_promote_value
+*/
+void caml_set_minor_heap_size (asize_t alloc_wsz)
 {
   char *new_heap;
   void *new_heap_base;
   asize_t full_wsz;
   asize_t aging_wsz;
 
-  Assert ((alloc_wsz & 1) == 0);
   Assert (alloc_wsz >= Minor_heap_min);
   Assert (alloc_wsz <= Minor_heap_max);
-  aging_wsz = aging_factor * alloc_wsz;
-  full_wsz = alloc_wsz + aging_wsz;
+  full_wsz = alloc_wsz * 3 + alloc_wsz / 3 + 1;
 
-  Assert (alloc_wsz >= Minor_heap_min);
-  Assert (alloc_wsz <= Minor_heap_max);
   if (caml_young_ptr != caml_young_alloc_end){
     CAML_INSTR_INT ("force_minor/set_minor_heap_size@", 1);
     caml_requested_minor_gc = 0;
@@ -235,7 +226,7 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
 #endif
   caml_young_base = new_heap_base;
   caml_young_start = (value *) new_heap;
-  caml_young_end = caml_young_start + full_wsz;
+  caml_young_end = caml_young_start + 3 * alloc_wsz;
   caml_young_alloc_start = caml_young_start;
   caml_young_alloc_mid = caml_young_alloc_start + alloc_wsz / 2;
   caml_young_alloc_end = caml_young_alloc_start + alloc_wsz;
@@ -243,77 +234,53 @@ void caml_set_minor_heap_size (asize_t alloc_wsz, asize_t aging_factor)
   caml_young_limit = caml_young_trigger;
   caml_young_ptr = caml_young_alloc_end;
   caml_young_aging_start = caml_young_alloc_end;
-  caml_young_aging_mid = caml_young_aging_start + aging_wsz / 2;
+  caml_young_aging_mid = caml_young_aging_start + alloc_wsz;
   caml_young_aging_end = caml_young_end;
   aging_phase = 0;
-  caml_young_aging_ptr = caml_young_aging_mid;
-  CAMLassert (caml_young_aging_end == caml_young_aging_start + aging_wsz);
+  caml_young_aging_ptr = caml_young_aging_start;
+  CAMLassert (caml_young_aging_end == caml_young_aging_start + 2 * alloc_wsz);
+  caml_minor_todo_base = (value **) caml_young_end;
   caml_minor_heap_wsz = alloc_wsz;
-  caml_minor_aging_wsz = aging_wsz;
-  caml_aging_size_factor = aging_factor;
 
   reset_table (&caml_ref_table);
   reset_table (&caml_weak_ref_table);
 }
 
-void caml_set_minor_age_limit (asize_t limit)
-{
-  if (limit > caml_young_age_limit){
-    caml_minor_marking_counter = limit;
-  }
-  caml_young_age_limit = limit;
-}
-
-
-/* Maximum age of non-promoted blocks after this minor collection. */
-static int age_limit;
-
 /* Allocate space of size [wosz] and tag [tag].
-   Where to allocate it, depends on [v]'s age and the [age_limit]
-   variable. [v] is guaranteed to be in the minor heap.
-   To do a full minor GC, set [age_limit] to 0.
+   [v] must be in the minor heap.
+   If [v] is in alloc space, allocate in aging space, if [v] is in aging
+   space, allocate in major heap.
+   As a special case, if [v] is [caml_special_promote_value], allocate in
+   major heap.
 
-   This function will also chain together in [promoted_list] all
-   the [v]s that are in the aging heap and that get promoted.
+   If allocated on major heap, push value onto the todo stack.
 */
 static value alloc_next_gen (asize_t wosz, tag_t tag, value v)
 {
-  CAMLassert (Is_young (v));
-  if (v == caml_special_promote_value){
-    /* FIXME find a way to get rid of this test. */
-    return caml_alloc_shr (wosz, tag);
-  }else{
-    value result;
-    int age = 0;
-    if ((value *) v >= caml_young_aging_start){
-      age = Age (v);
-    }
+  value ret;
 
-    if (age >= age_limit){
-      if (age > 0){
-        CAMLassert ((value *) v >= caml_young_aging_start);
-        Age (v) = promoted_list;
-        promoted_list = v;
-      }else{
-        CAMLassert ((value *) v < caml_young_aging_start);
-      }
+  CAMLassert (Is_young (v));
+  if (v < caml_young_alloc_end){
+    /* we are in alloc space */
+    if (v == caml_special_promote_value){
+      /* FIXME find a way to get rid of this test. */
+      *(caml_minor_todo_base++) = v;
       return caml_alloc_shr (wosz, tag);
     }else{
-#ifdef DEBUG
-      caml_allocated_in_aging += Whsize_wosize (wosz);
-#endif
-      caml_young_aging_ptr -= Whsize_wosize (wosz) + 1;
-      CAMLassert (caml_young_aging_ptr >= To_space_start);
-      result = Val_hp (caml_young_aging_ptr + 1);
+      /* allocate in aging space */
+      result = Val_hp (caml_young_aging_ptr);
+      if (wosz > 1){
+        caml_young_aging_ptr += Whsize_wosize (wosz);
+      }
       Hd_val (result) = Make_header (wosz, tag, Caml_white);
-      Age (result) = age + 1;
       return result;
     }
+  }else{
+    /* allocate in major heap */
+    *(caml_minor_todo_base++) = v;
+    return caml_alloc_shr (wosz, tag);
   }
 }
-
-static value oldify_todo_list = 0;
-int caml_do_full_minor = 0;
 
 /* Note that the tests on the tag depend on the fact that Infix_tag,
    Forward_tag, and No_scan_tag are contiguous.
@@ -347,8 +314,6 @@ void caml_oldify_one (value v, value *p)
         Field (v, 0) = result;     /*  and forward pointer. */
         if (sz > 1){
           Field (result, 0) = field0;
-          Field (result, 1) = oldify_todo_list;    /* Add this block */
-          oldify_todo_list = v;                    /*  to the "to do" list. */
         }else{
           Assert (sz == 1);
           p = &Field (result, 0);
