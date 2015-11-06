@@ -60,7 +60,6 @@ static void alloc_to_do (int size)
 
 /* Find white finalisable values, put them in the finalising set, and
    darken them.
-   The recent set is empty.
 */
 void caml_final_update (void)
 {
@@ -78,35 +77,25 @@ void caml_final_update (void)
     alloc_to_do (todo_count);
     j = k = 0;
     for (i = 0; i < old; i++){
-    again:
       Assert (Is_block (final_table[i].val));
       Assert (Is_in_heap (final_table[i].val));
+      Assert (Tag_val (final_table[i].val) != Forward_tag);
       if (Is_white_val (final_table[i].val)){
-        if (Tag_val (final_table[i].val) == Forward_tag){
-          value fv;
-          Assert (final_table[i].offset == 0);
-          fv = Forward_val (final_table[i].val);
-          if (Is_block (fv)
-              && (!Is_in_value_area(fv) || Tag_val (fv) == Forward_tag
-                  || Tag_val (fv) == Lazy_tag || Tag_val (fv) == Double_tag)){
-            /* Do not short-circuit the pointer. */
-          }else{
-            final_table[i].val = fv;
-            if (Is_block (final_table[i].val)
-                && Is_in_heap (final_table[i].val)){
-              goto again;
-            }
-          }
-        }
         to_do_tl->item[k++] = final_table[i];
       }else{
         final_table[j++] = final_table[i];
       }
     }
-    young = old = j;
+    i = old;
+    old = j;
+    for(;i < young; i++){
+      final_table[j++] = final_table[i];
+    }
+    young = j;
     to_do_tl->size = k;
     for (i = 0; i < k; i++){
-      CAMLassert (Is_white_val (to_do_tl->item[i].val));
+      /* Note that item may alredy be dark due to multiple entries in
+         the final table. */
       caml_darken (to_do_tl->item[i].val, NULL);
     }
   }
