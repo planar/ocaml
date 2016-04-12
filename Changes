@@ -530,6 +530,10 @@ Other libraries:
   similar functions when the [exec] call fails in the child process
   (Jérémie Dimino)
 
+- PR#7217: on MinGW, Unix.symlink does not fail even when
+  Unix.has_symlink () = false
+  (Damien Doligez, report by Jun Furuse)
+
 OCamldep:
 =========
 

@@ -29,35 +29,6 @@ typedef BOOL (WINAPI *LPFN_CREATESYMBOLICLINK) (LPTSTR, LPTSTR, DWORD);
 static LPFN_CREATESYMBOLICLINK pCreateSymbolicLink = NULL;
 static int no_symlink = 0;
 
-CAMLprim value unix_symlink(value to_dir, value source, value dest)
-{
-  CAMLparam3(to_dir, source, dest);
-  DWORD flags = (Bool_val(to_dir) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0);
-  BOOL result;
-
-again:
-  if (no_symlink) {
-    invalid_argument("symlink not available");
-  }
-
-  if (!pCreateSymbolicLink) {
-    pCreateSymbolicLink = (LPFN_CREATESYMBOLICLINK)GetProcAddress(GetModuleHandle("kernel32"), "CreateSymbolicLinkA");
-    no_symlink = !pCreateSymbolicLink;
-    goto again;
-  }
-
-  caml_enter_blocking_section();
-  result = pCreateSymbolicLink(String_val(dest), String_val(source), flags);
-  caml_leave_blocking_section();
-
-  if (!result) {
-    win32_maperr(GetLastError());
-    uerror("symlink", dest);
-  }
-
-  CAMLreturn(Val_unit);
-}
-
 #define luid_eq(l, r) (l.LowPart == r.LowPart && l.HighPart == r.HighPart)
 
 CAMLprim value unix_has_symlink(value unit)
@@ -100,4 +71,33 @@ CAMLprim value unix_has_symlink(value unit)
   }
 
   CAMLreturn(Val_bool(result));
+}
+
+CAMLprim value unix_symlink(value to_dir, value source, value dest)
+{
+  CAMLparam3(to_dir, source, dest);
+  DWORD flags = (Bool_val(to_dir) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0);
+  BOOL result;
+
+again:
+  if (no_symlink || ! Bool_val (unix_has_symlink (Val_unit))) {
+    invalid_argument("symlink not available");
+  }
+
+  if (!pCreateSymbolicLink) {
+    pCreateSymbolicLink = (LPFN_CREATESYMBOLICLINK)GetProcAddress(GetModuleHandle("kernel32"), "CreateSymbolicLinkA");
+    no_symlink = !pCreateSymbolicLink;
+    goto again;
+  }
+
+  caml_enter_blocking_section();
+  result = pCreateSymbolicLink(String_val(dest), String_val(source), flags);
+  caml_leave_blocking_section();
+
+  if (!result) {
+    win32_maperr(GetLastError());
+    uerror("symlink", dest);
+  }
+
+  CAMLreturn(Val_unit);
 }
