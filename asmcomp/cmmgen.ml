@@ -1702,6 +1702,60 @@ let strmatch_compile =
       end) in
   S.compile
 
+let is_pure_prim p =
+  let open Semantics_of_primitives in
+  match Semantics_of_primitives.for_primitive p with
+  | (No_effects | Only_generative_effects), _ -> true
+  | Arbitrary_effects, _ -> false
+
+let rec is_pure = function
+    Uvar _ -> true
+  | Uconst _ -> true
+  | Udirect_apply _ -> false
+  | Ugeneric_apply _ -> false
+  | Uclosure(_, args) -> List.for_all is_pure args
+  | Uoffset(arg, _) -> is_pure arg
+  | Ulet(_, _, _, def, body) -> is_pure def && is_pure body
+  | Uletrec(defs, body) ->
+      List.for_all (fun (_, def) -> is_pure def) defs && is_pure body
+  | Uprim(p, args, _) -> is_pure_prim p && List.for_all is_pure args
+  | Uswitch(arg, switch, _) -> is_pure arg && is_pure_switch switch
+  | Ustringswitch(arg, cases, default) ->
+      is_pure arg
+      && List.for_all (fun (_, case) -> is_pure case) cases
+      && (match default with None -> true | Some case -> is_pure case)
+  | Ustaticfail(_, args) -> List.for_all is_pure args
+  | Ucatch(_, _, def, body) -> is_pure def && is_pure body
+  | Utrywith(body, _, _) -> is_pure body
+  | Uifthenelse(cond, then_, else_) ->
+      is_pure cond && is_pure then_ && is_pure else_
+  | Usequence(lam1, lam2) -> is_pure lam1 && is_pure lam2
+  | Uwhile _ -> false
+  | Ufor(_, lower, upper, _, body) ->
+    is_pure lower && is_pure upper && is_pure body
+  | Uassign _ -> false
+  | Usend _ -> false
+  | Uunreachable -> true
+
+and is_pure_switch sw =
+  Array.for_all is_pure sw.us_actions_consts
+  && Array.for_all is_pure sw.us_actions_blocks
+
+let problem_formatter = ref None
+
+let report_problem loc =
+  let formatter =
+    match !problem_formatter with
+    | Some formatter -> formatter
+    | None ->
+        let unit_name = Compilenv.current_unit_name () in
+        let channel = open_out (unit_name ^ ".2239") in
+        let formatter = Format.formatter_of_out_channel channel in
+        problem_formatter := Some formatter;
+        formatter
+  in
+  Format.fprintf formatter "@[<2>Problem at:@ %a@]\n%!" Location.print loc
+
 let rec transl env e =
   match e with
     Uvar id ->
@@ -1874,16 +1928,17 @@ let rec transl env e =
           (Array.map (transl env) s.us_actions_consts)
           dbg
       else if Array.length s.us_index_consts = 0 then
-        transl_switch loc env (get_tag (transl env arg) dbg)
+        let pure = is_pure arg in
+        transl_switch loc env (get_tag (transl env arg) dbg) pure
           s.us_index_blocks s.us_actions_blocks
       else
         bind "switch" (transl env arg) (fun arg ->
           Cifthenelse(
           Cop(Cand, [arg; Cconst_int 1], dbg),
           transl_switch loc env
-            (untag_int arg dbg) s.us_index_consts s.us_actions_consts,
+            (untag_int arg dbg) true s.us_index_consts s.us_actions_consts,
           transl_switch loc env
-            (get_tag arg dbg) s.us_index_blocks s.us_actions_blocks))
+            (get_tag arg dbg) true s.us_index_blocks s.us_actions_blocks))
   | Ustringswitch(arg,sw,d) ->
       let dbg = Debuginfo.none in
       bind "switch" (transl env arg)
@@ -2733,9 +2788,11 @@ and transl_sequor env arg1 dbg1 arg2 dbg2 approx then_ else_ =
          (transl_if env arg2 dbg2 approx shareable_then else_))
     then_
 
-and transl_switch loc env arg index cases = match Array.length cases with
+and transl_switch loc env arg pure index cases = match Array.length cases with
 | 0 -> fatal_error "Cmmgen.transl_switch"
-| 1 -> transl env cases.(0)
+| 1 ->
+  if not pure then report_problem loc;
+  transl env cases.(0)
 | _ ->
     let cases = Array.map (transl env) cases in
     let store = StoreExpForSwitch.mk_store () in
@@ -2761,7 +2818,9 @@ and transl_switch loc env arg index cases = match Array.length cases with
     done ;
     inters := (0, !this_high, !this_act) :: !inters ;
     match !inters with
-    | [_] -> cases.(0)
+    | [_] ->
+      if not pure then report_problem loc;
+      cases.(0)
     | inters ->
         bind "switcher" arg
           (fun a ->
