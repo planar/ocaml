@@ -252,7 +252,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
     let callee = subst_var env func in
     Ugeneric_apply (check_closure callee (Flambda.Expr (Var func)),
       subst_vars env args, dbg)
-  | Switch (arg, sw) ->
+  | Switch (arg, sw, dbg) ->
     let aux () : Clambda.ulambda =
       let const_index, const_actions =
         to_clambda_switch t env sw.consts sw.numconsts sw.failaction
@@ -266,7 +266,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
           us_index_blocks = block_index;
           us_actions_blocks = block_actions;
         },
-        Debuginfo.none)  (* debug info will be added by GPR#855 *)
+        dbg)
     in
     (* Check that the [failaction] may be duplicated.  If this is not the
        case, share it through a static raise / static catch. *)
@@ -285,7 +285,7 @@ let rec to_clambda t env (flam : Flambda.t) : Clambda.ulambda =
         }
       in
       let expr : Flambda.t =
-        Static_catch (exn, [], Switch (arg, sw), failaction)
+        Static_catch (exn, [], Switch (arg, sw, dbg), failaction)
       in
       to_clambda t env expr
     end

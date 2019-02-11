@@ -65,7 +65,7 @@ type t =
   | Send of send
   | Assign of assign
   | If_then_else of Variable.t * t * t
-  | Switch of Variable.t * switch
+  | Switch of Variable.t * switch * Debuginfo.t
   | String_switch of Variable.t * (string * t) list * t option
   | Static_raise of Static_exception.t * Variable.t list
   | Static_catch of Static_exception.t * Variable.t list * t * t
@@ -259,7 +259,7 @@ let rec lam ppf (flam : t) =
           id_arg_list in
       fprintf ppf
         "@[<2>(letrec@ (@[<hv 1>%a@])@ %a)@]" bindings id_arg_list lam body
-  | Switch(larg, sw) ->
+  | Switch(larg, sw, _) ->
       let switch ppf (sw : switch) =
         let spc = ref false in
         List.iter
@@ -560,7 +560,7 @@ let rec variables_usage ?ignore_uses_as_callee ?ignore_uses_as_argument
                  ~all_used_variables defining_expr))
           bindings;
         aux body
-      | Switch (scrutinee, switch) ->
+      | Switch (scrutinee, switch, _) ->
         free_variable scrutinee;
         List.iter (fun (_, e) -> aux e) switch.consts;
         List.iter (fun (_, e) -> aux e) switch.blocks;
@@ -785,7 +785,7 @@ let iter_general ~toplevel f f_named maybe_named =
       | For { body; _ } -> aux body
       | If_then_else (_, f1, f2) ->
         aux f1; aux f2
-      | Switch (_, sw) ->
+      | Switch (_, sw, _) ->
         List.iter (fun (_,l) -> aux l) sw.consts;
         List.iter (fun (_,l) -> aux l) sw.blocks;
         Misc.may aux sw.failaction

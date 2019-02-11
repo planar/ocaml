@@ -103,7 +103,7 @@ type t =
   | Send of send
   | Assign of assign
   | If_then_else of Variable.t * t * t
-  | Switch of Variable.t * switch
+  | Switch of Variable.t * switch * Debuginfo.t
   | String_switch of Variable.t * (string * t) list * t option
   (** Restrictions on [Lambda.Lstringswitch] also apply to [String_switch]. *)
   | Static_raise of Static_exception.t * Variable.t list

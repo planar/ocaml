@@ -280,7 +280,7 @@ module Inconstants (P:Param) (Backend:Backend_intf.S) = struct
       mark_curr curr;
       mark_var func curr;
       mark_vars args curr;
-    | Switch (arg,sw) ->
+    | Switch (arg,sw,_) ->
       mark_curr curr;
       mark_var arg curr;
       List.iter (fun (_,l) -> mark_loop ~toplevel [] l) sw.consts;

@@ -90,7 +90,7 @@ let lambda_smaller' lam ~than:threshold =
     | Let_rec (bindings, body) ->
       List.iter (fun (_, lam) -> lambda_named_size lam) bindings;
       lambda_size body
-    | Switch (_, sw) ->
+    | Switch (_, sw, _) ->
       let aux = function _::_::_ -> size := !size + 5 | _ -> () in
       aux sw.consts; aux sw.blocks;
       List.iter (fun (_, lam) -> lambda_size lam) sw.consts;

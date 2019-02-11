@@ -114,7 +114,7 @@ let rec same (l1 : Flambda.t) (l2 : Flambda.t) =
   | Let_rec (bl1, a1), Let_rec (bl2, a2) ->
     Misc.Stdlib.List.equal samebinding bl1 bl2 && same a1 a2
   | Let_rec _, _ | _, Let_rec _ -> false
-  | Switch (a1, s1), Switch (a2, s2) ->
+  | Switch (a1, s1, _), Switch (a2, s2, _) ->
     Variable.equal a1 a2 && sameswitch s1 s2
   | Switch _, _ | _, Switch _ -> false
   | String_switch (a1, s1, d1), String_switch (a2, s2, d2) ->
@@ -256,9 +256,9 @@ let toplevel_substitution sb tree =
     | If_then_else (cond, e1, e2) ->
       let cond = sb cond in
       If_then_else (cond, e1, e2)
-    | Switch (cond, sw) ->
+    | Switch (cond, sw, dbg) ->
       let cond = sb cond in
-      Switch (cond, sw)
+      Switch (cond, sw, dbg)
     | String_switch (cond, branches, def) ->
       let cond = sb cond in
       String_switch (cond, branches, def)
@@ -668,9 +668,9 @@ let substitute_read_symbol_field_for_variables
       bind cond fresh (If_then_else (fresh, ifso, ifnot))
     | If_then_else _ ->
       expr
-    | Switch (cond, sw) when Variable.Map.mem cond substitution ->
+    | Switch (cond, sw, dbg) when Variable.Map.mem cond substitution ->
       let fresh = Variable.rename cond in
-      bind cond fresh (Switch (fresh, sw))
+      bind cond fresh (Switch (fresh, sw, dbg))
     | Switch _ ->
       expr
     | String_switch (cond, sw, def) when Variable.Map.mem cond substitution ->

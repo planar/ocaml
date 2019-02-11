@@ -446,7 +446,8 @@ let rec close t env (lam : Lambda.lambda) : Flambda.t =
       ~create_body:(fun args ->
         name_expr (Prim (p, args, dbg))
           ~name:(Names.of_primitive p))
-  | Lswitch (arg, sw, _loc) ->
+  | Lswitch (arg, sw, loc) ->
+    let dbg = Debuginfo.from_location loc in
     let scrutinee = Variable.create Names.switch in
     let aux (i, lam) = i, close t env lam in
     let nums sw_num cases default =
@@ -464,7 +465,7 @@ let rec close t env (lam : Lambda.lambda) : Flambda.t =
           numblocks = nums sw.sw_numblocks sw.sw_blocks sw.sw_failaction;
           blocks = List.map aux sw.sw_blocks;
           failaction = Misc.may_map (close t env) sw.sw_failaction;
-        }))
+        }, dbg))
   | Lstringswitch (arg, sw, def, _) ->
     let scrutinee = Variable.create Names.string_switch in
     Flambda.create_let scrutinee (Expr (close t env arg))
