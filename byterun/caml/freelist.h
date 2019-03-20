@@ -33,6 +33,10 @@ void caml_fl_add_blocks (value);
 void caml_make_free_blocks (value *, mlsize_t wsz, int, int);
 void caml_set_allocation_policy (uintnat);
 
+#ifdef DEBUG
+void caml_fl_check (void);
+#endif
+
 #endif /* CAML_INTERNALS */
 
 #endif /* CAML_FREELIST_H */
