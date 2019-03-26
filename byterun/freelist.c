@@ -37,10 +37,10 @@
    with a splay tree (Sleator & Tarjan).
 */
 
-/* [NUM_SMALL] must be at least 4 for this code to work,
-   at least 5 for good performance on typical OCaml programs.
+/* [NUM_SMALL] must be at least 4 for this code to work
+   and at least 5 for good performance on typical OCaml programs.
 */
-#define NUM_SMALL 32
+#define NUM_SMALL 16
 
 /* A block in a small free list is a [value] (integer representing a
    pointer to the first word after the block's header). The end of the
@@ -624,11 +624,9 @@ header_t *caml_fl_allocate (mlsize_t wosz)
       small_fl[wosz].free = Next_small (small_fl[wosz].free);
       return Hp_val (block);
     }else{
-      /* allocate from a multiple of the size (with header) */
-      mlsize_t i, s;
-      i = 2;
+      /* allocate from the next available size */
+      mlsize_t s = wosz + 1;
       while (1){
-        s = (wosz + 1) * i - 1;  /* assumes header size is 1 word */
         if (s > NUM_SMALL) break;
         if ((block = small_fl[s].free) != Val_NULL){
           if (small_fl[s].merge == &Next_small (small_fl[s].free)){
@@ -636,10 +634,10 @@ header_t *caml_fl_allocate (mlsize_t wosz)
           }
           small_fl[s].free = Next_small (small_fl[s].free);
           result = split_small (wosz, block);
-          fl_insert_fragment_small (block);
+          if (s - wosz > 1) fl_insert_fragment_small (block);
           return result;
         }
-        ++i;
+        ++s;
       }
     }
     /* failed to find a suitable small block: allocate from the tree. */
