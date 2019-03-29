@@ -55,8 +55,6 @@ static struct {
 
 asize_t caml_fl_cur_wsz = 0;     /* Number of words in the free set,
                                     including headers but not fragments. */
-/* TODO keep up to date. */
-
 value caml_fl_merge = Val_NULL;  /* Current insertion pointer.  Managed
                                     jointly with [sweep_slice]. */
 
@@ -114,7 +112,12 @@ static char *instr_name [20] = {
 };
 uintnat caml_instr_alloc_jump = 0;
 /* number of pointers followed to allocate from the free set */
-/* TODO keep up to date */
+
+#define INSTR_alloc_jump(n) (caml_instr_alloc_jump += (n))
+
+#else
+
+#define INSTR_alloc_jump(n) ((void)0)
 
 #endif /*CAML_INSTR*/
 
@@ -123,16 +126,17 @@ uintnat caml_instr_alloc_jump = 0;
 
 #ifdef DEBUG
 static mlsize_t check_cur_size = 0;
-static void check_subtree (large_free_block *p)
+static asize_t check_subtree (large_free_block *p)
 {
   mlsize_t wosz;
   large_free_block *cur, *next;
+  asize_t total_size = 0;
 
-  if (p == NULL) return;
+  if (p == NULL) return 0;
 
   wosz = large_wosize(p);
   CAMLassert (p->isnode);
-  check_subtree (p->left);
+  total_size += check_subtree (p->left);
   CAMLassert (wosz > NUM_SMALL);
   CAMLassert (wosz > check_cur_size);
   check_cur_size = wosz;
@@ -141,17 +145,21 @@ static void check_subtree (large_free_block *p)
     CAMLassert (large_wosize (cur) == wosz);
     CAMLassert (Color_val ((value) cur) == Caml_blue);
     CAMLassert (cur == p || ! cur->isnode);
+    total_size += Whsize_wosize (wosz);
     next = cur->next;
     CAMLassert (next->prev == cur);
     if (next == p) break;
     cur = next;
   }
-  check_subtree (p->right);
+  total_size += check_subtree (p->right);
+  return total_size;
 }
 
-static void DEBUG_check (void)
+void caml_fl_check (void)
 {
   mlsize_t i;
+  asize_t total_size = 0;
+
   /* check free lists */
   for (i = 1; i <= NUM_SMALL; i++){
     value b;
@@ -162,6 +170,7 @@ static void DEBUG_check (void)
     for (b = small_fl[i].free; b != Val_NULL; b = Next_small (b)){
       if (small_fl[i].merge == &Next_small (b)) merge_found = 1;
       CAMLassert (Wosize_val (b) == i);
+      total_size += Whsize_wosize (i);
       if (Color_val (b) == Caml_blue){
         col = 1;
         CAMLassert (Next_small (b) == Val_NULL || Next_small (b) > b);
@@ -174,13 +183,12 @@ static void DEBUG_check (void)
   }
   /* check the tree */
   check_cur_size = 0;
-  check_subtree (large_tree);
+  total_size += check_subtree (large_tree);
+  /* check the total free set size */
+  CAMLassert (total_size == caml_fl_cur_wsz);
 }
 
-void caml_fl_check (void)
-{
-  DEBUG_check ();
-}
+#define DEBUG_check() caml_fl_check()
 
 #else
 #define DEBUG_check() ((void)0)
@@ -204,7 +212,7 @@ static large_free_block **search (mlsize_t wosz)
   mlsize_t cursz;
 
   while (1){
-    cur = *p;
+    cur = *p;        INSTR_alloc_jump (1);
     if (cur == NULL) break;
     cursz = large_wosize (cur);
     if (cursz == wosz){
@@ -232,7 +240,7 @@ static large_free_block **search_best (mlsize_t wosz, mlsize_t *next_lower)
   mlsize_t cursz;
 
   while (1){
-    cur = *p;
+    cur = *p;        INSTR_alloc_jump (1);
     if (cur == NULL){
       *next_lower = lowsz;
       break;
@@ -276,35 +284,39 @@ static void splay (mlsize_t wosz)
     if (xsz == wosz) break;
     if (xsz > wosz){
       /* zig */
-      if (x->left == NULL) break;
-      if (large_wosize (x->left) > wosz){
+      y = x->left;        INSTR_alloc_jump (1);
+      if (y == NULL) break;
+      if (large_wosize (y) > wosz){
         /* zig-zig: rotate right */
-        y = x->left;
         x->left = y->right;
         y->right = x;
         x = y;
-        if (x->left == NULL) break;
+        y = x->left;
+        INSTR_alloc_jump (2);
+        if (y == NULL) break;
       }
       /* link right */
       *right_bottom = x;
       right_bottom = &(x->left);
-      x = x->left;
+      x = y;
     }else{
       CAMLassert (xsz < wosz);
       /* zag */
-      if (x->right == NULL) break;
-      if (large_wosize (x->right) < wosz){
+      y = x->right;        INSTR_alloc_jump (1);
+      if (y == NULL) break;
+      if (large_wosize (y) < wosz){
         /* zag-zag : rotate left */
-        y = x->right;
         x->right = y->left;
         y->left = x;
         x = y;
-        if (x->right == NULL) break;
+        y = x->right;
+        INSTR_alloc_jump (2);
+        if (y == NULL) break;
       }
       /* link left */
       *left_bottom = x;
       left_bottom = &(x->right);
-      x = x->right;
+      x = y;
     }
   }
   /* reassemble the tree */
@@ -312,6 +324,7 @@ static void splay (mlsize_t wosz)
   *right_bottom = x->right;
   x->left = left_top;
   x->right = right_top;
+  INSTR_alloc_jump (2);
   large_tree = x;
 }
 
@@ -326,24 +339,26 @@ static void splay_least (large_free_block **p)
   large_free_block *right_top = NULL;
   large_free_block **right_bottom = &right_top;
 
-  x = *p;
+  x = *p;        INSTR_alloc_jump (1);
   CAMLassert (x != NULL);
   while (1){
     /* We are always in the zig case. */
-    if (x->left == NULL) break;
+    y = x->left;        INSTR_alloc_jump (1);
+    if (y == NULL) break;
     /* And in the zig-zig case. rotate right */
-    y = x->left;
     x->left = y->right;
     y->right = x;
     x = y;
-    if (x->left == NULL) break;
+    y = x->left;
+    INSTR_alloc_jump (2);
+    if (y == NULL) break;
     /* link right */
     *right_bottom = x;
     right_bottom = &(x->left);
-    x = x->left;
+    x = y;
   }
   /* reassemble the tree */
-  *right_bottom = x->right;
+  *right_bottom = x->right;        INSTR_alloc_jump (1);
   x->right = right_top;
   *p = x;
 }
@@ -354,17 +369,18 @@ static void remove_node (large_free_block **p)
   large_free_block *x;
   large_free_block *l, *r;
 
-  x = *p;
+  x = *p;        INSTR_alloc_jump (1);
   if (x == NULL) return;
   l = x->left;
   r = x->right;
+  INSTR_alloc_jump (2);
   if (l == NULL){
     *p = r;
   }else if (r == NULL){
     *p = l;
   }else{
     splay_least (&(x->right));
-    r = x->right;
+    r = x->right;        INSTR_alloc_jump (1);
     r->left = l;
     *p = r;
   }
@@ -377,7 +393,7 @@ static void remove_node (large_free_block **p)
 static void insert_block (large_free_block *n)
 {
   large_free_block **p = search (large_wosize (n));
-  large_free_block *x = *p;
+  large_free_block *x = *p;        INSTR_alloc_jump (1);
 
   CAMLassert (Color_val ((value) n) == Caml_blue);
   CAMLassert (Wosize_val ((value) n) > NUM_SMALL);
@@ -398,6 +414,7 @@ static void insert_block (large_free_block *n)
     n->next = x;
     x->prev->next = n;
     x->prev = n;
+    INSTR_alloc_jump (2);
     splay (large_wosize (n));
   }
 }
@@ -429,7 +446,7 @@ static void fl_insert_fragment_small (value v)
 
   CAMLassert (Color_val (v) == Caml_black);
   CAMLassert (Tag_val (v) == Abstract_tag);
-  CAMLassert (wosz <= NUM_SMALL);
+  CAMLassert (1 <= wosz && wosz <= NUM_SMALL);
   Next_small (v) = small_fl[wosz].free;
   small_fl[wosz].free = v;
   if (small_fl[wosz].merge == &small_fl[wosz].free){
@@ -461,11 +478,14 @@ static void fl_insert_fragment (value v)
 static void fl_insert_sweep (value v)
 {
   mlsize_t wosz = Wosize_val (v);
+  value next;
 
   CAMLassert (Color_val (v) == Caml_blue);
   if (wosz <= NUM_SMALL){
-    while (*small_fl[wosz].merge != Val_NULL && *small_fl[wosz].merge < v){
-      small_fl[wosz].merge = &Next_small (*small_fl[wosz].merge);
+    while (1){
+      next = *small_fl[wosz].merge;
+      if (next == Val_NULL || next >= v) break;
+      small_fl[wosz].merge = &Next_small (next);
     }
     Next_small (v) = *small_fl[wosz].merge;
     *small_fl[wosz].merge = v;
@@ -530,8 +550,10 @@ static header_t *split_small (mlsize_t wosz, value v)
   if (remwhsz > Whsize_wosize (0)){
     Hd_val (v) =
       Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_black);
+    caml_fl_cur_wsz -= Whsize_wosize (wosz);
   }else{
     Hd_val (v) = Make_header (0, 0, Caml_white);
+    caml_fl_cur_wsz -= Whsize_val (v);
   }
   return (header_t *) &Field (v, Wosize_whsize (remwhsz));
 }
@@ -549,12 +571,15 @@ static header_t *split (mlsize_t wosz, value v)
   CAMLassert (Wosize_val (v) >= wosz);
   if (remwhsz <= Whsize_wosize (0)){
     Hd_val (v) = Make_header (0, 0, Caml_white);
+    caml_fl_cur_wsz -= Whsize_hd (hd);
   }else if (remwhsz <= Whsize_wosize (NUM_SMALL)){
     Hd_val (v) =
       Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_black);
+    caml_fl_cur_wsz -= Whsize_wosize (wosz);
   }else{
     Hd_val (v) =
       Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_blue);
+    caml_fl_cur_wsz -= Whsize_wosize (wosz);
   }
   return (header_t *) &Field (v, Wosize_whsize (remwhsz));
 }
@@ -614,6 +639,7 @@ header_t *caml_fl_allocate (mlsize_t wosz)
   }
 #endif /* CAML_INSTR */
 
+  DEBUG_check ();
   if (wosz <= NUM_SMALL){
     if (small_fl[wosz].free != Val_NULL){
       /* fast path: allocate from the corresponding free list */
@@ -622,6 +648,8 @@ header_t *caml_fl_allocate (mlsize_t wosz)
         small_fl[wosz].merge = &small_fl[wosz].free;
       }
       small_fl[wosz].free = Next_small (small_fl[wosz].free);
+      caml_fl_cur_wsz -= Whsize_wosize (wosz);
+  DEBUG_check ();
       return Hp_val (block);
     }else{
       /* allocate from the next available size */
@@ -644,6 +672,7 @@ header_t *caml_fl_allocate (mlsize_t wosz)
     if (large_tree == NULL) return NULL;
     splay_least (&large_tree);
     result = alloc_from_large (wosz, &large_tree, NUM_SMALL);
+  DEBUG_check ();
     return result;
   }else{
     /* allocate a large block */
@@ -652,6 +681,7 @@ header_t *caml_fl_allocate (mlsize_t wosz)
     n = search_best (wosz, &bound);
     if (n == NULL) return NULL;
     result = alloc_from_large (wosz, n, bound);
+  DEBUG_check ();
     return result;
   }
 }
@@ -681,6 +711,7 @@ void caml_fl_init_merge (void)
     while (p != Val_NULL && Color_val (p) != Caml_blue){
       CAMLassert (Color_val (p) == Caml_white || Color_val (p) == Caml_black);
       Hd_val(p) = Whitehd_hd (Hd_val (p));
+      caml_fl_cur_wsz -= Whsize_val (p);
       p = Next_small (p);
     }
     small_fl[i].free = p;
@@ -713,7 +744,9 @@ header_t *caml_fl_merge_block (value bp, char *limit)
   value next;
   mlsize_t wosz;
 
+  DEBUG_check ();
   CAMLassert (Color_val (bp) == Caml_white);
+  caml_fl_cur_wsz += Whsize_val (bp);
   /* Find the starting point of the current run of free blocks. */
   if (caml_fl_merge != Val_NULL && Next (caml_fl_merge) == bp){
     start = caml_fl_merge;
@@ -730,6 +763,7 @@ header_t *caml_fl_merge_block (value bp, char *limit)
         void (*final_fun)(value) = Custom_ops_val(next)->finalize;
         if (final_fun != NULL) final_fun(next);
       }
+      caml_fl_cur_wsz += Whsize_val (next);
       next = Next (next);
       break;
     case Caml_blue:
@@ -755,11 +789,13 @@ header_t *caml_fl_merge_block (value bp, char *limit)
     fl_insert_sweep (start);
   }else{
     Hd_val (start) = Make_header (0, 0, Caml_white);
+    caml_fl_cur_wsz -= Whsize_wosize (0);
   }
+  DEBUG_check ();
   return Hp_val (next);
 }
 
-/* [bp] must point to a list of blocks chained by their field 0,
+/* [bp] must point to a list of blocks of wosize >= 1 chained by their field 0,
    terminated by Val_NULL, and field 1 of the first block must point to
    the last block.
    The blocks must be blue.
@@ -768,10 +804,14 @@ void caml_fl_add_blocks (value bp)
 {
   while (bp != Val_NULL){
     value next = Next_small (bp);
-    if (Wosize_val (bp) > NUM_SMALL){
+    mlsize_t wosz = Wosize_val (bp);
+
+    caml_fl_cur_wsz += Whsize_wosize (wosz);
+    if (wosz > NUM_SMALL){
       insert_block ((large_free_block *) bp);
     }else{
       Hd_val (bp) = Blackhd_hd (Hd_val (bp));
+      fl_insert_fragment_small (bp);
     }
     bp = next;
   }
@@ -802,8 +842,10 @@ void caml_make_free_blocks (value *p, mlsize_t size, int do_merge, int color)
       if (wosz == 0){
         color = Caml_white;
       }else if (wosz <= NUM_SMALL){
+        caml_fl_cur_wsz += Whsize_wosize (wosz);
         color = Caml_black;
       }else{
+        caml_fl_cur_wsz += Whsize_wosize (wosz);
         color = Caml_blue;
       }
       *(header_t *)p = Make_header (wosz, Abstract_tag, color);
