@@ -156,12 +156,11 @@ let modifier_of_string str =
       | None -> raise invalid_argument
       | Some pos_eq -> if pos_eq <= 0 then raise invalid_argument else
         let (append, varname_length) =
-        (match String.index_opt str '+' with
-        | None -> (false, pos_eq)
-        | Some pos_plus ->
-          if pos_plus = pos_eq-1
-          then (true, pos_plus)
-          else raise invalid_argument) in
+          if str.[pos_eq - 1] = '+' then
+            (true, pos_eq - 1)
+          else
+            (false, pos_eq)
+        in
         let variable_name = String.sub str 0 varname_length in
         match Variables.find_variable variable_name with
           | None -> raise (Variables.No_such_variable variable_name)
