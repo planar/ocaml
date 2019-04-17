@@ -24,6 +24,7 @@
    ocaml.warn_on_literal_pattern
    ocaml.deprecated_mutable
    ocaml.immediate
+   ocaml.immediate64
    ocaml.boxed / ocaml.unboxed
 *)
 
@@ -71,6 +72,7 @@ val explicit_arity: Parsetree.attributes -> bool
 
 
 val immediate: Parsetree.attributes -> bool
+val immediate64: Parsetree.attributes -> bool
 
 val has_unboxed: Parsetree.attributes -> bool
 val has_boxed: Parsetree.attributes -> bool
