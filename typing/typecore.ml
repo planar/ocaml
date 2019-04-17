@@ -3758,7 +3758,7 @@ and type_expect_
         type_newtype_level = Some (level, level);
         type_loc = loc;
         type_attributes = [];
-        type_immediate = false;
+        type_immediate = Unknown;
         type_unboxed = unboxed_false_default_false;
       }
       in

@@ -179,6 +179,13 @@ let immediate =
       | _ -> false
     )
 
+let immediate64 =
+  List.exists
+    (function
+      | ({txt="ocaml.immediate64"|"immediate64"; _}, _) -> true
+      | _ -> false
+    )
+
 (* The "ocaml.boxed (default)" and "ocaml.unboxed (default)"
    attributes cannot be input by the user, they are added by the
    compiler when applying the default setting. This is done to record
