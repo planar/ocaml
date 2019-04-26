@@ -747,8 +747,9 @@ let simplify_local_functions lam =
   in
   let enabled = function
     | {local = Always_local; _}
-    | {local = Default_local; inline = (Never_inline | Default_inline); _}
+    | {local = Default_local; inline = (Default_inline); _}
       -> true
+    | {local = Default_local; inline = (Never_inline); _}
     | {local = Default_local; inline = (Always_inline | Unroll _); _}
     | {local = Never_local; _}
       -> false
