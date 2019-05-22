@@ -139,6 +139,19 @@ end
 
 (* Type definitions *)
 
+type immediacy =
+  | Unknown
+  | Always
+  | Always_on_64bits
+
+let more_often_immediate a b =
+  match a, b with
+  | Always, (Unknown | Always_on_64bits)
+  | Always_on_64bits, Unknown -> true
+  | Always, Always
+  | Always_on_64bits, (Always | Always_on_64bits)
+  | Unknown, _ -> false
+
 type type_declaration =
   { type_params: type_expr list;
     type_arity: int;
@@ -149,7 +162,7 @@ type type_declaration =
     type_newtype_level: (int * int) option;
     type_loc: Location.t;
     type_attributes: Parsetree.attributes;
-    type_immediate: bool;
+    type_immediate: immediacy;
     type_unboxed: unboxed_status;
  }
 
