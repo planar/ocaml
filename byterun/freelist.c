@@ -755,7 +755,7 @@ header_t *caml_fl_merge_block (value bp, char *limit)
   }else{
     start = bp;
   }
-  next = Next (bp);
+  next = bp;
   while ((char *) next <= limit){
     switch (Color_val (next)){
     case Caml_white:
