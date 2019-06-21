@@ -1225,6 +1225,13 @@ if test "$with_instrumented_runtime" != "false"; then
   esac
 fi
 
+# For the allocator
+
+if sh ./hasgot2 -i string.h ffs; then
+    inf "ffs() found"
+    echo "#define HAS_FFS" >>s.h
+fi
+
 # Configuration for the libraries
 
 case "$system" in

@@ -21,6 +21,7 @@
 #define HAS_STDINT_H
 #endif
 #undef BSD_SIGNALS
+#define HAS_BITSCANFORWARD
 #define HAS_STRERROR
 #define HAS_SOCKETS
 #define HAS_GETCWD

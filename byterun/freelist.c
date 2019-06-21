@@ -870,6 +870,7 @@ static void ff_make_free_blocks
 
 /* [BF_NUM_SMALL] must be at least 4 for this code to work
    and at least 5 for good performance on typical OCaml programs.
+   For portability reasons, BF_NUM_SMALL cannot be more than 32.
 */
 #define BF_NUM_SMALL 16
 
@@ -877,6 +878,7 @@ static struct {
   value free;
   value *merge;
 } bf_small_fl [BF_NUM_SMALL + 1];
+int bf_small_map = 0;
 
 /* Small free blocks have only one pointer to the next block.
    Large free blocks have 5 fields:
@@ -902,6 +904,33 @@ static inline mlsize_t bf_large_wosize (struct large_free_block *n) {
 
 static struct large_free_block *bf_large_tree;
 
+/* auxiliary function: find first bit set in a word */
+#ifdef HAS_FFS
+/* Nothing to do */
+#elif defined(HAS_BITSCANFORWARD)
+static inline int ffs (int x)
+{
+  unsigned long index;
+  unsigned char result;
+  result = _BitScanForward (&index, (unsigned long) x);
+  return (int) index + result;
+}
+#else
+static inline int ffs (int x)
+{
+  /* adapted from Hacker's Delight */
+  int result, bnz, b0, b1, b2, b3, b4;
+  CAMLassert ((x & 0xFFFFFFFF) == x);
+  x = x & -x;
+  bnz = x != 0;
+  b4 = !!(x & 0xFFFF0000) << 4;
+  b3 = !!(x & 0xFF00FF00) << 3;
+  b2 = !!(x & 0xF0F0F0F0) << 2;
+  b1 = !!(x & 0xCCCCCCCC) << 1;
+  b0 = !!(x & 0xAAAAAAAA);
+  return bnz + b0 + b1 + b2 + b3 + b4;
+}
+#endif /* HAS_FFS or HAS_BITSCANFORWARD */
 
 /* debug functions for checking the data structures */
 
@@ -940,14 +969,17 @@ static void bf_check (void)
 {
   mlsize_t i;
   asize_t total_size = 0;
+  int map = 0;
 
   /* check free lists */
+  CAMLassert (BF_NUM_SMALL <= 8 * sizeof (int));
   for (i = 1; i <= BF_NUM_SMALL; i++){
     value b;
     int col = 0;
     int merge_found = 0;
 
     if (bf_small_fl[i].merge == &bf_small_fl[i].free) merge_found = 1;
+    if (bf_small_fl[i].free != Val_NULL) map |= 1 << (i-1);
     for (b = bf_small_fl[i].free; b != Val_NULL; b = Next_small (b)){
       if (bf_small_fl[i].merge == &Next_small (b)) merge_found = 1;
       CAMLassert (Wosize_val (b) == i);
@@ -961,6 +993,7 @@ static void bf_check (void)
       }
     }
     CAMLassert (merge_found);
+    CAMLassert (map == bf_small_map);
   }
   /* check the tree */
   bf_check_cur_size = 0;
@@ -1245,6 +1278,7 @@ static void bf_insert_fragment_small (value v)
   if (bf_small_fl[wosz].merge == &bf_small_fl[wosz].free){
     bf_small_fl[wosz].merge = &Next_small (v);
   }
+  bf_small_map |= 1 << (wosz - 1);
 }
 
 /* Add back a fragment into the free set. The block must have the
@@ -1277,7 +1311,11 @@ static void bf_insert_sweep (value v)
   if (wosz <= BF_NUM_SMALL){
     while (1){
       next = *bf_small_fl[wosz].merge;
-      if (next == Val_NULL || next >= v) break;
+      if (next == Val_NULL){
+        bf_small_map |= 1 << (wosz - 1);
+        break;
+      }
+      if (next >= v) break;
       bf_small_fl[wosz].merge = &Next_small (next);
     }
     Next_small (v) = *bf_small_fl[wosz].merge;
@@ -1300,6 +1338,7 @@ static void bf_remove (value v)
       bf_small_fl[wosz].merge = &Next_small (*bf_small_fl[wosz].merge);
     }
     *bf_small_fl[wosz].merge = Next_small (v);
+    if (bf_small_fl[wosz].free == Val_NULL) bf_small_map &= ~(1 << (wosz - 1));
   }else{
     large_free_block *b = (large_free_block *) v;
     CAMLassert (bf_is_in_tree (b));
@@ -1427,7 +1466,6 @@ static header_t *bf_allocate (mlsize_t wosz)
   }
 #endif /* CAML_INSTR */
 
-  DEBUG_bf_check ();
   if (wosz <= BF_NUM_SMALL){
     if (bf_small_fl[wosz].free != Val_NULL){
       /* fast path: allocate from the corresponding free list */
@@ -1436,31 +1474,32 @@ static header_t *bf_allocate (mlsize_t wosz)
         bf_small_fl[wosz].merge = &bf_small_fl[wosz].free;
       }
       bf_small_fl[wosz].free = Next_small (bf_small_fl[wosz].free);
+      if (bf_small_fl[wosz].free == Val_NULL){
+        bf_small_map &= ~(1 << (wosz - 1));
+      }
       caml_fl_cur_wsz -= Whsize_wosize (wosz);
-  DEBUG_bf_check ();
       return Hp_val (block);
     }else{
       /* allocate from the next available size */
-      mlsize_t s = wosz + 1;
-      while (1){
-        if (s > BF_NUM_SMALL) break;
-        if ((block = bf_small_fl[s].free) != Val_NULL){
-          if (bf_small_fl[s].merge == &Next_small (bf_small_fl[s].free)){
-            bf_small_fl[s].merge = &bf_small_fl[s].free;
-          }
-          bf_small_fl[s].free = Next_small (bf_small_fl[s].free);
-          result = bf_split_small (wosz, block);
-          if (s - wosz > 1) bf_insert_fragment_small (block);
-          return result;
+      mlsize_t s = (mlsize_t) ffs (bf_small_map & ~ ((1 << wosz) - 1));
+      if (s != 0){
+        block = bf_small_fl[s].free;
+        CAMLassert (block != Val_NULL);
+        if (bf_small_fl[s].merge == &Next_small (bf_small_fl[s].free)){
+          bf_small_fl[s].merge = &bf_small_fl[s].free;
         }
-        ++s;
+        bf_small_fl[s].free = Next_small (bf_small_fl[s].free);
+        if (bf_small_fl[s].free == Val_NULL) bf_small_map &= ~(1 << (s - 1));
+        result = bf_split_small (wosz, block);
+        if (s - wosz > 1) bf_insert_fragment_small (block);
+        return result;
       }
     }
     /* failed to find a suitable small block: allocate from the tree. */
+    /* TODO: allocate a number of small blocks at once. */
     if (bf_large_tree == NULL) return NULL;
     bf_splay_least (&bf_large_tree);
     result = bf_alloc_from_large (wosz, &bf_large_tree, BF_NUM_SMALL);
-  DEBUG_bf_check ();
     return result;
   }else{
     /* allocate a large block */
@@ -1469,7 +1508,6 @@ static header_t *bf_allocate (mlsize_t wosz)
     n = bf_search_best (wosz, &bound);
     if (n == NULL) return NULL;
     result = bf_alloc_from_large (wosz, n, bound);
-  DEBUG_bf_check ();
     return result;
   }
 }
@@ -1496,7 +1534,12 @@ static void bf_init_merge (void)
        place in the list.
     */
     value p = bf_small_fl[i].free;
-    while (p != Val_NULL && Color_val (p) != Caml_blue){
+    while (1){
+      if (p == Val_NULL){
+        bf_small_map &= ~(1 << (i - 1));
+        break;
+      }
+      if (Color_val (p) == Caml_blue) break;
       CAMLassert (Color_val (p) == Caml_white || Color_val (p) == Caml_black);
       Hd_val(p) = Whitehd_hd (Hd_val (p));
       caml_fl_cur_wsz -= Whsize_val (p);
@@ -1516,6 +1559,7 @@ static void bf_reset (void)
     bf_small_fl[i].free = Val_NULL;
     bf_small_fl[i].merge = &(bf_small_fl[i].free);
   }
+  bf_small_map = 0;
   bf_large_tree = NULL;
   caml_fl_cur_wsz = 0;
   bf_init_merge ();
@@ -1527,7 +1571,6 @@ static header_t *bf_merge_block (value bp, char *limit)
   value next;
   mlsize_t wosz;
 
-  DEBUG_bf_check ();
   CAMLassert (Color_val (bp) == Caml_white);
   caml_fl_cur_wsz += Whsize_val (bp);
   /* Find the starting point of the current run of free blocks. */
@@ -1540,7 +1583,7 @@ static header_t *bf_merge_block (value bp, char *limit)
   }
   next = bp;
   while ((char *) next <= limit){
-    /* FIXME todo recognize (w+b)w* instead of (w|b)* */
+    /* TODO recognize (w+b)w* instead of (w|b)* */
     switch (Color_val (next)){
     case Caml_white:
       if (Tag_val (next) == Custom_tag){
@@ -1580,7 +1623,6 @@ static header_t *bf_merge_block (value bp, char *limit)
     Hd_val (start) = Make_header (0, 0, Caml_white);
     caml_fl_cur_wsz -= Whsize_wosize (0);
   }
-  DEBUG_bf_check ();
   return Hp_val (next);
 }
 
