@@ -107,7 +107,7 @@ let enter_type rec_flag env sdecl id =
       type_newtype_level = None;
       type_loc = sdecl.ptype_loc;
       type_attributes = sdecl.ptype_attributes;
-      type_immediate = false;
+      type_immediate = Unknown;
       type_unboxed = unboxed_false_default_false;
     }
   in
@@ -123,17 +123,26 @@ let update_type temp_env env id loc =
       with Ctype.Unify trace ->
         raise (Error(loc, Type_clash (env, trace)))
 
+type t =
+  | Unavailable
+  | This of type_expr
+  | Only_on_64_bits of type_expr
+
 (* We use the Ctype.expand_head_opt version of expand_head to get access
    to the manifest type of private abbreviations. *)
 let rec get_unboxed_type_representation env ty fuel =
-  if fuel < 0 then None else
+  if fuel < 0 then Unavailable else
   let ty = Ctype.repr (Ctype.expand_head_opt env ty) in
   match ty.desc with
   | Tconstr (p, args, _) ->
     begin match Env.find_type p env with
-    | exception Not_found -> Some ty
-    | {type_immediate = true; _} -> Some Predef.type_int
-    | {type_unboxed = {unboxed = false}} -> Some ty
+    | exception Not_found ->
+        This ty
+    | {type_immediate = Always; _} ->
+        This Predef.type_int
+    | {type_immediate = Always_on_64bits; _} ->
+        Only_on_64_bits Predef.type_int
+    | {type_unboxed = {unboxed = false}} -> This ty
     | {type_params; type_kind =
          Type_record ([{ld_type = ty2; _}], _)
        | Type_variant [{cd_args = Cstr_tuple [ty2]; _}]
@@ -143,12 +152,12 @@ let rec get_unboxed_type_representation env ty fuel =
         let ty2 = match ty2.desc with Tpoly (t, _) -> t | _ -> ty2 in
         get_unboxed_type_representation env
           (Ctype.apply env type_params ty2 args) (fuel - 1)
-    | {type_kind=Type_abstract} -> None
+    | {type_kind=Type_abstract} -> Unavailable
           (* This case can occur when checking a recursive unboxed type
              declaration. *)
     | _ -> assert false (* only the above can be unboxed *)
     end
-  | _ -> Some ty
+  | _ -> This ty
 
 let get_unboxed_type_representation env ty =
   (* Do not give too much fuel: PR#7424 *)
@@ -158,7 +167,7 @@ let get_unboxed_type_representation env ty =
 (* Determine if a type's values are represented by floats at run-time. *)
 let is_float env ty =
   match get_unboxed_type_representation env ty with
-    Some {desc = Tconstr(p, _, _); _} -> Path.same p Predef.path_float
+    This {desc = Tconstr(p, _, _); _} -> Path.same p Predef.path_float
   | _ -> false
 
 (* Determine if a type definition defines a fixed type. (PW) *)
@@ -348,21 +357,21 @@ and check_unboxed_abstract_row_field loc univ (_, field) =
    the type, given the universal parameters of the type. *)
 let rec check_unboxed_gadt_arg loc univ env ty =
   match get_unboxed_type_representation env ty with
-  | Some {desc = Tvar _; id} -> check_type_var loc univ id
-  | Some {desc = Tarrow _ | Ttuple _ | Tpackage _ | Tobject _ | Tnil
+  | This {desc = Tvar _; id} -> check_type_var loc univ id
+  | This {desc = Tarrow _ | Ttuple _ | Tpackage _ | Tobject _ | Tnil
                  | Tvariant _; _} ->
     ()
     (* A comment in [Translcore.transl_exp0] claims the above cannot be
        represented by floats. *)
-  | Some {desc = Tconstr (p, args, _); _} ->
+  | This {desc = Tconstr (p, args, _); _} ->
     let tydecl = Env.find_type p env in
     assert (not tydecl.type_unboxed.unboxed);
     if tydecl.type_kind = Type_abstract then
       List.iter (check_unboxed_abstract_arg loc univ) args
-  | Some {desc = Tfield _ | Tlink _ | Tsubst _; _} -> assert false
-  | Some {desc = Tunivar _; _} -> ()
-  | Some {desc = Tpoly (t2, _); _} -> check_unboxed_gadt_arg loc univ env t2
-  | None -> ()
+  | This {desc = Tfield _ | Tlink _ | Tsubst _; _} -> assert false
+  | This {desc = Tunivar _; _} -> ()
+  | This {desc = Tpoly (t2, _); _} -> check_unboxed_gadt_arg loc univ env t2
+  | _ -> ()
       (* This case is tricky: the argument is another (or the same) type
          in the same recursive definition. In this case we don't have to
          check because we will also check that other type for correctness. *)
@@ -520,7 +529,7 @@ let transl_declaration env sdecl id =
         type_newtype_level = None;
         type_loc = sdecl.ptype_loc;
         type_attributes = sdecl.ptype_attributes;
-        type_immediate = false;
+        type_immediate = Unknown;
         type_unboxed = unboxed_status;
       } in
 
@@ -1114,7 +1123,13 @@ let is_hash id =
   String.length s > 0 && s.[0] = '#'
 
 let marked_as_immediate decl =
-  Builtin_attributes.immediate decl.type_attributes
+  match
+    Builtin_attributes.immediate decl.type_attributes,
+    Builtin_attributes.immediate64 decl.type_attributes
+  with
+  | true, _ -> Always
+  | _, true -> Always_on_64bits
+  | false, false -> Unknown
 
 let compute_immediacy env tdecl =
   match (tdecl.type_kind, tdecl.type_manifest) with
@@ -1123,15 +1138,22 @@ let compute_immediacy env tdecl =
     | (Type_record ([{ld_type = arg; _}], _), _)
   when tdecl.type_unboxed.unboxed ->
     begin match get_unboxed_type_representation env arg with
-    | Some argrepr -> not (Ctype.maybe_pointer_type env argrepr)
-    | None -> false
+    | Unavailable -> Unknown
+    | This argrepr -> Ctype.immediacy env argrepr
+    | Only_on_64_bits argrepr ->
+        match Ctype.immediacy env argrepr with
+        | Always -> Always_on_64bits
+        | Always_on_64bits | Unknown as x -> x
     end
   | (Type_variant (_ :: _ as cstrs), _) ->
-    not (List.exists (fun c -> c.Types.cd_args <> Types.Cstr_tuple []) cstrs)
-  | (Type_abstract, Some(typ)) ->
-    not (Ctype.maybe_pointer_type env typ)
+    if not (List.exists (fun c -> c.Types.cd_args <> Types.Cstr_tuple []) cstrs)
+    then
+      Always
+    else
+      Unknown
+  | (Type_abstract, Some(typ)) -> Ctype.immediacy env typ
   | (Type_abstract, None) -> marked_as_immediate tdecl
-  | _ -> false
+  | _ -> Unknown
 
 (* Computes the fixpoint for the variance and immediacy of type declarations *)
 
@@ -1170,7 +1192,8 @@ let rec compute_properties_fixpoint env decls required variances immediacies =
       prerr_endline "")
       new_decls; *)
     List.iter (fun (_, decl) ->
-      if (marked_as_immediate decl) && (not decl.type_immediate) then
+      if more_often_immediate (marked_as_immediate decl)
+           decl.type_immediate then
         raise (Error (decl.type_loc, Bad_immediate_attribute))
       else ())
       new_decls;
@@ -1205,7 +1228,7 @@ let compute_variance_decls env cldecls =
   let (decls, _) =
     compute_properties_fixpoint env decls required
       (List.map init_variance decls)
-      (List.map (fun _ -> false) decls)
+      (List.map (fun _ -> Unknown) decls)
   in
   List.map2
     (fun (_,decl) (_, _, cl_abbr, clty, cltydef, _) ->
@@ -1390,7 +1413,7 @@ let transl_type_decl env rec_flag sdecl_list =
   let final_decls, final_env =
     compute_properties_fixpoint env decls required
       (List.map init_variance decls)
-      (List.map (fun _ -> false) decls)
+      (List.map (fun _ -> Unknown) decls)
   in
   (* Check re-exportation *)
   List.iter2 (check_abbrev final_env) sdecl_list final_decls;
@@ -1851,7 +1874,7 @@ let transl_with_constraint env id row_path orig_decl sdecl =
       type_newtype_level = None;
       type_loc = sdecl.ptype_loc;
       type_attributes = sdecl.ptype_attributes;
-      type_immediate = false;
+      type_immediate = Unknown;
       type_unboxed;
     }
   in
@@ -1899,7 +1922,7 @@ let abstract_type_decl arity =
       type_newtype_level = None;
       type_loc = Location.none;
       type_attributes = [];
-      type_immediate = false;
+      type_immediate = Unknown;
       type_unboxed = unboxed_false_default_false;
      } in
   Ctype.end_def();
