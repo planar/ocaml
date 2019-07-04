@@ -53,8 +53,6 @@ static struct {
   value *merge;
 } small_fl [NUM_SMALL + 1];
 
-static mlsize_t max_small_fl = 0;
-
 asize_t caml_fl_cur_wsz = 0;     /* Number of words in the free set,
                                     including headers but not fragments. */
 value caml_fl_merge = Val_NULL;  /* Current insertion pointer.  Managed
@@ -454,7 +452,6 @@ static void fl_insert_fragment_small (value v)
   if (small_fl[wosz].merge == &small_fl[wosz].free){
     small_fl[wosz].merge = &Next_small (v);
   }
-  if(wosz > max_small_fl) max_small_fl = wosz;
 }
 
 /* Add back a fragment into the free set. The block must have the
@@ -493,7 +490,6 @@ static void fl_insert_sweep (value v)
     Next_small (v) = *small_fl[wosz].merge;
     *small_fl[wosz].merge = v;
     small_fl[wosz].merge = &Next_small (v);
-    if(wosz > max_small_fl) max_small_fl = wosz;
   }else{
     insert_block ((large_free_block *) v);
   }
@@ -655,22 +651,24 @@ header_t *caml_fl_allocate (mlsize_t wosz)
       caml_fl_cur_wsz -= Whsize_wosize (wosz);
   DEBUG_check ();
       return Hp_val (block);
-    }
-    /* allocate from the next available size */
-    mlsize_t s;
-    for(s = wosz + 1; s <= max_small_fl; s++) {
-      if ((block = small_fl[s].free) != Val_NULL){
-        if (small_fl[s].merge == &Next_small (small_fl[s].free)){
-          small_fl[s].merge = &small_fl[s].free;
+    }else{
+      /* allocate from the next available size */
+      mlsize_t s = wosz + 1;
+      while (1){
+        if (s > NUM_SMALL) break;
+        if ((block = small_fl[s].free) != Val_NULL){
+          if (small_fl[s].merge == &Next_small (small_fl[s].free)){
+            small_fl[s].merge = &small_fl[s].free;
+          }
+          small_fl[s].free = Next_small (small_fl[s].free);
+          result = split_small (wosz, block);
+          if (s - wosz > 1) fl_insert_fragment_small (block);
+          return result;
         }
-        small_fl[s].free = Next_small (small_fl[s].free);
-        result = split_small (wosz, block);
-        if (s - wosz > 1) fl_insert_fragment_small (block);
-        return result;
+        ++s;
       }
     }
     /* failed to find a suitable small block: allocate from the tree. */
-    if(max_small_fl >= wosz) max_small_fl = wosz - 1;
     if (large_tree == NULL) return NULL;
     splay_least (&large_tree);
     result = alloc_from_large (wosz, &large_tree, NUM_SMALL);
@@ -731,7 +729,6 @@ void caml_fl_reset (void)
     small_fl[i].free = Val_NULL;
     small_fl[i].merge = &(small_fl[i].free);
   }
-  max_small_fl = 0;
   large_tree = NULL;
   caml_fl_cur_wsz = 0;
   caml_fl_init_merge ();
