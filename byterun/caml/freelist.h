@@ -31,7 +31,7 @@ void caml_fl_reset (void);
 header_t *caml_fl_merge_block (value, char *limit);
 void caml_fl_add_blocks (value);
 void caml_make_free_blocks (value *, mlsize_t wsz, int, int);
-void caml_set_allocation_policy (uintnat);
+void caml_set_allocation_policy (intnat);
 
 #ifdef DEBUG
 void caml_fl_check (void);
