@@ -59,6 +59,15 @@ module Options = Main_args.Make_bytecomp_options (struct
       | Some p ->
         if not (p = pass) then
           fatal "Please specify at most one -stop-after <pass>."
+  let _start_from pass =
+    match Compiler_pass.of_string pass with
+    | None -> () (* this should not occur as we use Arg.Symbol *)
+    | Some pass ->
+      match !stop_after with
+      | None -> start_from := Some pass
+      | Some p ->
+        if not (p = pass) then
+          fatal "Please specify at most one -start-from <pass>."
   let _I s = include_dirs := s :: !include_dirs
   let _impl = impl
   let _intf = intf
@@ -186,7 +195,7 @@ let main () =
            are  incompatible with -pack, -a, -output-obj"
           (String.concat "|"
              (P.available_pass_names ~filter:(fun _ -> true) ~native:false))
-      | Some P.Scheduling -> assert false (* native only *)
+      | Some (P.Scheduling | P.Emit)-> assert false (* native only *)
     end;
     if !make_archive then begin
       Compmisc.init_path ();

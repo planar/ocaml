@@ -28,6 +28,9 @@ val compile_implementation_clambda :
     backend:(module Backend_intf.S) ->
     ppf_dump:Format.formatter -> Lambda.program -> unit
 
+val compile_implementation_linear :
+    string -> progname:string -> unit
+
 val compile_phrase :
     ppf_dump:Format.formatter -> Cmm.phrase -> unit
 

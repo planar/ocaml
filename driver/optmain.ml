@@ -74,6 +74,15 @@ module Options = Main_args.Make_optcomp_options (struct
         | None -> () (* this should not occur as we use Arg.Symbol *)
         | Some pass ->
           set_save_ir_after pass true
+  let _start_from pass =
+    match Compiler_pass.of_string pass with
+    | None -> () (* this should not occur as we use Arg.Symbol *)
+    | Some pass ->
+      match !stop_after with
+      | None -> start_from := Some pass
+      | Some p ->
+        if not (p = pass) then
+          fatal "Please specify at most one -start-from <pass>."
   let _I dir = include_dirs := dir :: !include_dirs
   let _impl = impl
   let _inline spec =
@@ -296,7 +305,7 @@ let main () =
       | None ->
         fatal "Please specify at most one of -pack, -a, -shared, -c, \
              -output-obj";
-      | Some ((P.Parsing | P.Typing | P.Scheduling) as p) ->
+      | Some ((P.Parsing | P.Typing | P.Scheduling | P.Emit) as p) ->
         assert (P.is_compilation_pass p);
         Printf.ksprintf fatal
           "Options -i and -stop-after (%s) \

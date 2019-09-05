@@ -113,6 +113,17 @@ let mk_save_ir_after ~native f =
   " Save intermediate representation after the given compilation pass\
     (may be specified more than once)."
 
+let mk_start_from ~native f =
+  let pass_names =
+    Clflags.Compiler_pass.(available_pass_names
+                             ~filter:can_start_from
+                             ~native)
+  in
+  "-start-from",
+  Arg.Symbol (pass_names, f), " Start from the given compilation pass."
+;;
+
+
 let mk_dtypes f =
   "-dtypes", Arg.Unit f, " (deprecated) same as -annot"
 ;;
@@ -933,6 +944,7 @@ module type Compiler_options = sig
   val _for_pack : string -> unit
   val _g : unit -> unit
   val _stop_after : string -> unit
+  val _start_from : string -> unit
   val _i : unit -> unit
   val _impl : string -> unit
   val _intf : string -> unit
@@ -1132,6 +1144,7 @@ struct
     mk_for_pack_byt F._for_pack;
     mk_g_byt F._g;
     mk_stop_after ~native:false F._stop_after;
+    mk_start_from ~native:false F._start_from;
     mk_i F._i;
     mk_I F._I;
     mk_impl F._impl;
@@ -1306,6 +1319,7 @@ struct
     mk_g_opt F._g;
     mk_stop_after ~native:true F._stop_after;
     mk_save_ir_after ~native:true F._save_ir_after;
+    mk_start_from ~native:true F._start_from;
     mk_i F._i;
     mk_I F._I;
     mk_impl F._impl;
@@ -1620,4 +1634,3 @@ let options_with_command_line_syntax options r =
      options_with_command_line_syntax_inner r rest
        ~name_opt:(Some name) spec, doc)
   ) options
-
