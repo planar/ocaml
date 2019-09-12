@@ -199,8 +199,6 @@ let join_array env rs =
       done;
       Some res
 
-let contains_calls = ref false
-
 (* Name of function being compiled *)
 let current_function_name = ref ""
 
@@ -374,6 +372,7 @@ method select_store is_assign addr arg =
   (Istore(Word_val, addr, is_assign), arg)
 
 (* call marking methods, documented in selectgen.mli *)
+val contains_calls = ref false
 
 method mark_call =
   contains_calls := true
@@ -1205,7 +1204,6 @@ method insert_prologue _f ~loc_arg ~rarg ~spacetime_node_hole:_ ~env =
 method initial_env () = env_empty
 
 method emit_fundecl f =
-  contains_calls := false;
   current_function_name := f.Cmm.fun_name;
   let rargs =
     List.map
