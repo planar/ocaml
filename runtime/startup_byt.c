@@ -351,7 +351,7 @@ CAMLexport void caml_main(char_os **argv)
 
   /* Determine options */
 #ifdef DEBUG
-  caml_verb_gc = 0x3F;
+  caml_verb_gc = 0;
 #endif
   caml_parse_ocamlrunparam();
   CAML_EVENTLOG_INIT();
@@ -488,7 +488,7 @@ CAMLexport value caml_startup_code_exn(
   caml_init_domain();
   /* Determine options */
 #ifdef DEBUG
-  caml_verb_gc = 0x3F;
+  caml_verb_gc = 0;
 #endif
   caml_parse_ocamlrunparam();
   CAML_EVENTLOG_INIT();

@@ -591,14 +591,14 @@ AS_CASE([$host],
         [internal_cflags="-Wno-unused $gcc_warnings \
 -fexcess-precision=standard"
         # TODO: see whether the code can be fixed to avoid -Wno-unused
-        common_cflags="-O2 -fno-strict-aliasing -fwrapv -mms-bitfields"
+        common_cflags="-fno-strict-aliasing -fwrapv -mms-bitfields"
         internal_cppflags='-DUNICODE -D_UNICODE'
         internal_cppflags="$internal_cppflags -DWINDOWS_UNICODE="
         internal_cppflags="${internal_cppflags}\$(WINDOWS_UNICODE)"],
       [AC_MSG_ERROR([Unsupported C compiler for a Mingw build])])],
   [AS_CASE([$ocaml_cv_cc_vendor],
     [clang-*],
-      [common_cflags="-O2 -fno-strict-aliasing -fwrapv";
+      [common_cflags="-fno-strict-aliasing -fwrapv";
       internal_cflags="$gcc_warnings -fno-common"],
     [gcc-[[012]]-*],
       # Some versions known to miscompile OCaml, e,g, 2.7.2.1, some 2.96.
@@ -619,15 +619,15 @@ AS_CASE([$host],
 -fno-builtin-memcmp";
       internal_cflags="$gcc_warnings"],
     [gcc-4-*],
-      [common_cflags="-std=gnu99 -O2 -fno-strict-aliasing -fwrapv \
+      [common_cflags="-std=gnu99 -fno-strict-aliasing -fwrapv \
 -fno-builtin-memcmp";
       internal_cflags="$gcc_warnings -fexcess-precision=standard"],
     [gcc-*],
-      [common_cflags="-O2 -fno-strict-aliasing -fwrapv";
+      [common_cflags="-fno-strict-aliasing -fwrapv";
       internal_cflags="$gcc_warnings -fno-common \
 -fexcess-precision=standard"],
     [msvc-*],
-      [common_cflags="-nologo -O2 -Gy- -MD"
+      [common_cflags="-nologo -Gy- -MD"
       common_cppflags="-D_CRT_SECURE_NO_DEPRECATE"
       internal_cppflags='-DUNICODE -D_UNICODE'
       internal_cppflags="$internal_cppflags -DWINDOWS_UNICODE="
