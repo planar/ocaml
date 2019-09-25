@@ -873,16 +873,11 @@ static void ff_make_free_blocks
 */
 #define BF_NUM_SMALL 16
 
-/* How many blocks to pre-allocate at once for a small free list when
-   it and all the larger ones are empty.
-   100 should be a good number to amortize the overhead. */
-#define BF_PREALLOC_NUM 100
-
 static struct {
   value free;
   value *merge;
 } bf_small_fl [BF_NUM_SMALL + 1];
-int bf_small_map = 0;
+static int bf_small_map = 0;
 
 /* Small free blocks have only one pointer to the next block.
    Large free blocks have 5 fields:
@@ -910,7 +905,8 @@ static struct large_free_block *bf_large_tree;
 static struct large_free_block *bf_large_least;
 /* [bf_large_least] is either NULL or a pointer to the smallest (leftmost)
    block in the tree. In this latter case, the block must be alone in its
-   doubly-linked list (i.e. have [isnode] true and [prev] and [next] NULL)
+   doubly-linked list (i.e. have [isnode] true and [prev] and [next]
+   both pointing back to this block)
 */
 
 /* Auxiliary functions for bitmap */
@@ -919,12 +915,13 @@ static struct large_free_block *bf_large_least;
 #ifdef HAS_FFS
 /* Nothing to do */
 #elif defined(HAS_BITSCANFORWARD)
+#include <intrin.h>
 static inline int ffs (int x)
 {
   unsigned long index;
   unsigned char result;
   result = _BitScanForward (&index, (unsigned long) x);
-  return (int) index + result;
+  return result ? (int) index + 1 : 0;
 }
 #else
 static inline int ffs (int x)
@@ -1013,7 +1010,7 @@ static void bf_check (void)
                     || Bp_val (Next_small (b)) > Bp_val (b));
       }else{
         CAMLassert (col == 0);
-        CAMLassert (Color_val (b) != Caml_gray);
+        CAMLassert (Color_val (b) == Caml_black);
       }
     }
     CAMLassert (merge_found);
@@ -1078,7 +1075,7 @@ static large_free_block **bf_search (mlsize_t wosz)
 }
 
 /* Search for the least node that is large enough to accomodate the given
-   size. Return in [next_lower] an upper bound on the size of the
+   size. Return in [next_lower] an upper bound on either the size of the
    next-lower node in the tree, or BF_NUM_SMALL if there is no such node.
 */
 static large_free_block **bf_search_best (mlsize_t wosz, mlsize_t *next_lower)
@@ -1310,9 +1307,9 @@ static int bf_is_in_tree (large_free_block *b)
 
 /**************************************************************************/
 
-/* Add back a fragment into a small free list. The block must be small
+/* Add back a remnant into a small free list. The block must be small
    and black and its tag must be abstract. */
-static void bf_insert_fragment_small (value v)
+static void bf_insert_remnant_small (value v)
 {
   mlsize_t wosz = Wosize_val (v);
 
@@ -1327,13 +1324,13 @@ static void bf_insert_fragment_small (value v)
   set_map (wosz);
 }
 
-/* Add back a fragment into the free set. The block must have the
+/* Add back a remnant into the free set. The block must have the
    appropriate color:
    White if it is a fragment (wosize = 0)
    Black if it is a small block (0 < wosize <= BF_NUM_SMALL)
    Blue if it is a large block (BF_NUM_SMALL < wosize)
 */
-static void bf_insert_fragment (value v)
+static void bf_insert_remnant (value v)
 {
   mlsize_t wosz = Wosize_val (v);
 
@@ -1341,7 +1338,7 @@ static void bf_insert_fragment (value v)
     CAMLassert (Color_val (v) == Caml_white);
   }else if (wosz <= BF_NUM_SMALL){
     CAMLassert (Color_val (v) == Caml_black);
-    bf_insert_fragment_small (v);
+    bf_insert_remnant_small (v);
   }else{
     CAMLassert (Color_val (v) == Caml_blue);
     bf_insert_block ((large_free_block *) v);
@@ -1420,16 +1417,28 @@ static void bf_remove (value v)
    The remaining block is still at the same address, its size is changed
    and its color becomes black if its size is greater than 0.
 */
-static header_t *bf_split_small (mlsize_t wosz, value v)
+static header_t *bf_split_small (mlsize_t wosz, value v, int* keep)
 {
   intnat remwhsz = Whsize_val (v) - Whsize_wosize (wosz);
 
   CAMLassert (Wosize_val (v) >= wosz);
+  *keep = 1;
   if (remwhsz > Whsize_wosize (0)){
-    caml_fl_cur_wsz -= Whsize_wosize (wosz);
-    Hd_val (v) =
-      Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_black);
+    if (caml_gc_phase == Phase_sweep && (char*)Hp_val(v) >= (char*)caml_gc_sweep_hp) {
+      /* Do not keep this fragment. Instead, mark it white and allow
+         it to be swept */
+      caml_fl_cur_wsz -= Whsize_val (v);
+      *keep = 0;
+      Hd_val (v) =
+        Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_white);
+    } else {
+      caml_fl_cur_wsz -= Whsize_wosize (wosz);
+      *keep = 1;
+      Hd_val (v) =
+        Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_black);
+    }
   }else{
+    *keep = 0;
     caml_fl_cur_wsz -= Whsize_val (v);
     Hd_val (v) = Make_header (0, 0, Caml_white);
   }
@@ -1439,27 +1448,23 @@ static header_t *bf_split_small (mlsize_t wosz, value v)
 /* Split the given block, return a new block of the given size.
    The original block is at the same address but its size is changed.
    Its color and tag are changed as appropriate for calling the
-   insert_fragment* functions.
+   insert_remnant* functions.
 */
-static header_t *bf_split (mlsize_t wosz, value v)
+static header_t *bf_split (mlsize_t wosz, value v, int* keep)
 {
   header_t hd = Hd_val (v);
   mlsize_t remwhsz = Whsize_hd (hd) - Whsize_wosize (wosz);
 
   CAMLassert (Wosize_val (v) >= wosz);
-  if (remwhsz <= Whsize_wosize (0)){
-    Hd_val (v) = Make_header (0, 0, Caml_white);
-    caml_fl_cur_wsz -= Whsize_hd (hd);
-  }else if (remwhsz <= Whsize_wosize (BF_NUM_SMALL)){
-    Hd_val (v) =
-      Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_black);
-    caml_fl_cur_wsz -= Whsize_wosize (wosz);
-  }else{
+  if (remwhsz <= Whsize_wosize(BF_NUM_SMALL)) {
+    return bf_split_small(wosz, v, keep);
+  } else {
+    *keep = 1;
     Hd_val (v) =
       Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_blue);
     caml_fl_cur_wsz -= Whsize_wosize (wosz);
+    return (header_t *) &Field (v, Wosize_whsize (remwhsz));
   }
-  return (header_t *) &Field (v, Wosize_whsize (remwhsz));
 }
 
 /* Allocate from a large block at [p]. If the node is single and the remaining
@@ -1475,20 +1480,23 @@ static header_t *bf_alloc_from_large (mlsize_t wosz, large_free_block **p,
   large_free_block *n = *p;
   large_free_block *b;
   header_t *result;
+  int keep;
 
   CAMLassert (bf_large_wosize (n) >= wosz);
   if (n->next == n){
     if (bf_large_wosize (n) > bound + Whsize_wosize (wosz)){
-      /* TODO splay at [n]? if the remainder is larger than [wosz]? */
+      /* TODO splay at [n]? if the remnant is larger than [wosz]? */
       if (set_least){
         CAMLassert (bound == BF_NUM_SMALL);
         bf_large_least = n;
       }
-      return bf_split (wosz, (value) n);
+      /* we know that the remnant will be kept
+         because the block remains large */
+      return bf_split (wosz, (value) n, &keep);
     }else{
       bf_remove_node (p);
-      result = bf_split (wosz, (value) n);
-      bf_insert_fragment ((value) n);
+      result = bf_split (wosz, (value) n, &keep);
+      if (keep) bf_insert_remnant ((value) n);
       return result;
     }
   }else{
@@ -1496,9 +1504,9 @@ static header_t *bf_alloc_from_large (mlsize_t wosz, large_free_block **p,
     CAMLassert (bf_large_wosize (b) == bf_large_wosize (n));
     n->next = b->next;
     b->next->prev = n;
-    result = bf_split (wosz, (value) b);
-    /* TODO: splay at [n] if the remainder is smaller than [wosz] */
-    bf_insert_fragment ((value) b);
+    result = bf_split (wosz, (value) b, &keep);
+    /* TODO: splay at [n] if the remnant is smaller than [wosz] */
+    if (keep) bf_insert_remnant ((value) b);
     if (set_least){
       CAMLassert (bound == BF_NUM_SMALL);
       if (bf_large_wosize (b) > BF_NUM_SMALL){
@@ -1523,6 +1531,7 @@ static header_t *bf_allocate (mlsize_t wosz)
 {
   value block;
   header_t *result;
+  int keep;
 
   CAMLassert (sizeof (char *) == sizeof (value));
   CAMLassert (wosz >= 1);
@@ -1561,8 +1570,8 @@ static header_t *bf_allocate (mlsize_t wosz)
         }
         bf_small_fl[s].free = Next_small (bf_small_fl[s].free);
         if (bf_small_fl[s].free == Val_NULL) unset_map (s);
-        result = bf_split_small (wosz, block);
-        if (s > Whsize_wosize (wosz)) bf_insert_fragment_small (block);
+        result = bf_split_small (wosz, block, &keep);
+        if (s > Whsize_wosize (wosz) && keep) bf_insert_remnant_small (block);
         FREELIST_DEBUG_bf_check ();
         return result;
       }
@@ -1571,7 +1580,8 @@ static header_t *bf_allocate (mlsize_t wosz)
     if (bf_large_least != NULL
         && bf_large_wosize (bf_large_least)
            > BF_NUM_SMALL + Whsize_wosize (wosz)){
-      result = bf_split (wosz, (value) bf_large_least);
+      result = bf_split (wosz, (value) bf_large_least, &keep);
+      CAMLassert (keep);
       CAMLassert (Color_val ((value) bf_large_least) == Caml_blue);
       return result;
     }
@@ -1601,12 +1611,11 @@ static void bf_init_merge (void)
   caml_fl_merge = Val_NULL;
 
   for (i = 1; i <= BF_NUM_SMALL; i++){
-    /* At the beginning of each small free list is a segment of fragments
-       that were pushed back to the list after splitting. These are either
-       black or white, and they are not in order. We need to remove them
-       from the list for coalescing to work. We set them white so they
-       will be picked up by the sweeping code and inserted in the right
-       place in the list.
+    /* At the beginning of each small free list is a segment of remnants
+       that were pushed back to the list after splitting. These are black
+       and not in order. We need to remove them from the list for
+       coalescing to work. We set them white so they will be picked up by
+       the sweeping code and inserted in the right place in the list.
     */
     value p = bf_small_fl[i].free;
     while (1){
@@ -1615,7 +1624,7 @@ static void bf_init_merge (void)
         break;
       }
       if (Color_val (p) == Caml_blue) break;
-      CAMLassert (Color_val (p) == Caml_white || Color_val (p) == Caml_black);
+      CAMLassert (Color_val (p) == Caml_black);
       Hd_val(p) = Whitehd_hd (Hd_val (p));
       caml_fl_cur_wsz -= Whsize_val (p);
       p = Next_small (p);
@@ -1658,38 +1667,27 @@ static header_t *bf_merge_block (value bp, char *limit)
   }
   cur = bp;
   while (1){
-    /* We don't want to coalesce runs of blue blocks because the allocation
-       code creates such runs that we want to preserve, while garbage
-       collection never creates such runs.
-
-       This is a 2-state automaton that recognizes the regexp (w|wb)+
-       knowing that we start with a white block. */
-  st_white:
-    CAMLassert (Color_val (cur) == Caml_white);
+    /* This slightly convoluted loop is just going over the run of
+       white or blue blocks, doing the right thing for each color, and
+       stopping on a gray or black block or when limit is passed.
+       It is convoluted because we start knowing that the first block
+       is white. */
+  white:
     if (Tag_val (cur) == Custom_tag){
       void (*final_fun)(value) = Custom_ops_val(cur)->finalize;
       if (final_fun != NULL) final_fun(cur);
     }
     caml_fl_cur_wsz += Whsize_val (cur);
+  next:
     cur = Next_in_mem (cur);
     if ((char *) cur > limit) goto end_of_run;
     switch (Color_val (cur)){
-    case Caml_white: goto st_white;
-    case Caml_blue: goto st_blue;
-    case Caml_gray: case Caml_black: goto end_of_run;
+    case Caml_white: goto white;
+    case Caml_blue: bf_remove (cur); goto next;
+    case Caml_gray:
+    case Caml_black:
+      goto end_of_run;
     }
-    CAMLassert (0);
-  st_blue:
-    CAMLassert (Color_val (cur) == Caml_blue);
-    bf_remove (cur);
-    cur = Next_in_mem (cur);
-    if ((char *) cur > limit) goto end_of_run;
-    switch (Color_val (cur)){
-    case Caml_white: goto st_white;
-    case Caml_blue: goto end_of_run;
-    case Caml_gray: case Caml_black: goto end_of_run;
-    }
-    CAMLassert (0);
   }
  end_of_run:
   wosz = Wosize_whsize ((value *) cur - (value *) start);
@@ -1729,7 +1727,7 @@ static void bf_add_blocks (value bp)
       bf_insert_block ((large_free_block *) bp);
     }else{
       Hd_val (bp) = Blackhd_hd (Hd_val (bp));
-      bf_insert_fragment_small (bp);
+      bf_insert_remnant_small (bp);
     }
     bp = next;
   }
@@ -1758,7 +1756,7 @@ static void bf_make_free_blocks (value *p, mlsize_t size, int do_merge,
         color = Caml_blue;
       }
       *(header_t *)p = Make_header (wosz, Abstract_tag, color);
-      bf_insert_fragment (Val_hp (p));
+      bf_insert_remnant (Val_hp (p));
     }else{
       *(header_t *)p = Make_header (Wosize_whsize (sz), 0, color);
     }
