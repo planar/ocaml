@@ -1434,7 +1434,7 @@ static header_t *bf_split_small (mlsize_t wosz, value v)
 
   CAMLassert (Wosize_val (v) > wosz);
   caml_fl_cur_wsz -= blocksz;
-  Hd_val (v) = Make_header (Wosize_whsize (remwhsz), 0, Caml_white);
+  Hd_val (v) = Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_white);
   return (header_t *) &Field (v, Wosize_whsize (remwhsz));
 }
 
@@ -1457,7 +1457,7 @@ static header_t *bf_split (mlsize_t wosz, value v)
   caml_fl_cur_wsz -= Whsize_hd (hd);
   if (remwhsz <= Whsize_wosize (BF_NUM_SMALL)){
     /* Same as bf_split_small. */
-    Hd_val (v) = Make_header (Wosize_whsize (remwhsz), 0, Caml_white);
+    Hd_val (v) = Make_header (Wosize_whsize (remwhsz), Abstract_tag, Caml_white);
   }else{
     Hd_val (v) = Make_header (Wosize_whsize (remwhsz), 0, Caml_blue);
   }
