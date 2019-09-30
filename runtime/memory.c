@@ -667,7 +667,6 @@ CAMLexport CAMLweakdef void caml_modify (value *fp, value val)
     *fp = val;
   } else {
     /* The modified object resides in the major heap. */
-    CAMLassert(Is_in_heap(fp));
     old = *fp;
     *fp = val;
     if (Is_block(old)) {
