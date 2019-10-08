@@ -1669,9 +1669,9 @@ static header_t *bf_merge_block (value bp, char *limit)
 
   CAMLassert (Color_val (bp) == Caml_white);
   /* Find the starting point of the current run of free blocks. */
-  if (caml_fl_merge != Val_NULL && Next_in_mem (caml_fl_merge) == bp){
+  if (caml_fl_merge != Val_NULL && Next_in_mem (caml_fl_merge) == bp &&
+      Color_val(caml_fl_merge) == Caml_blue){
     start = caml_fl_merge;
-    CAMLassert (Color_val (start) == Caml_blue);
     bf_remove (start);
   }else{
     start = bp;
@@ -1780,7 +1780,7 @@ typedef enum caml_policy_t {
   policy_best_fit = 2,
 } caml_policy_t;
 
-caml_policy_t caml_allocation_policy = policy_next_fit;
+uintnat caml_allocation_policy = policy_next_fit;
 
 /* These pointers are changed when switching between allocation
    policies. */
