@@ -237,6 +237,12 @@ let ignore_low_bit_int = function
   | Cop(Cor, [c; Cconst_int (1, _)], _) -> c
   | c -> c
 
+(* removes the 1-bit sign-extension left by untag_int (tag_int c) *)
+let ignore_high_bit_int = function
+    Cop(Casr,
+        [Cop(Clsl, [c; Cconst_int (1, _)], _); Cconst_int (1, _)], _) -> c
+  | c -> c
+
 let lsr_int c1 c2 dbg =
   match c2 with
     Cconst_int (0, _) ->
@@ -266,30 +272,16 @@ let tag_int i dbg =
   | c ->
       incr_int (lsl_int c (Cconst_int (1, dbg)) dbg) dbg
 
-let force_tag_int i dbg =
-  match i with
-    Cconst_int (n, _) ->
-      int_const dbg n
-  | Cop(Casr, [c; Cconst_int (n, _)], dbg') when n > 0 ->
-      Cop(Cor, [asr_int c (Cconst_int (n - 1, dbg)) dbg'; Cconst_int (1, dbg)],
-        dbg)
-  | c ->
-      Cop(Cor, [lsl_int c (Cconst_int (1, dbg)) dbg; Cconst_int (1, dbg)], dbg)
-
 let untag_int i dbg =
   match i with
     Cconst_int (n, _) -> Cconst_int(n asr 1, dbg)
-  | Cop(Caddi, [Cop(Clsl, [c; Cconst_int (1, _)], _); Cconst_int (1, _)], _) ->
-      c
   | Cop(Cor, [Cop(Casr, [c; Cconst_int (n, _)], _); Cconst_int (1, _)], _)
     when n > 0 && n < size_int * 8 ->
       Cop(Casr, [c; Cconst_int (n+1, dbg)], dbg)
   | Cop(Cor, [Cop(Clsr, [c; Cconst_int (n, _)], _); Cconst_int (1, _)], _)
     when n > 0 && n < size_int * 8 ->
       Cop(Clsr, [c; Cconst_int (n+1, dbg)], dbg)
-  | Cop(Cor, [c; Cconst_int (1, _)], _) ->
-      Cop(Casr, [c; Cconst_int (1, dbg)], dbg)
-  | c -> Cop(Casr, [c; Cconst_int (1, dbg)], dbg)
+  | c -> asr_int c (Cconst_int (1, dbg)) dbg
 
 (* Description of the "then" and "else" continuations in [transl_if]. If
    the "then" continuation is true and the "else" continuation is false then
@@ -2156,8 +2148,10 @@ let rec transl env e =
           | Pbigarray_int32 -> box_int dbg Pint32 elt
           | Pbigarray_int64 -> box_int dbg Pint64 elt
           | Pbigarray_native_int -> box_int dbg Pnativeint elt
-          | Pbigarray_caml_int -> force_tag_int elt dbg
-          | _ -> tag_int elt dbg
+          | Pbigarray_caml_int -> tag_int elt dbg
+          | Pbigarray_sint8 | Pbigarray_uint8
+          | Pbigarray_sint16 | Pbigarray_uint16 -> tag_int elt dbg
+          | Pbigarray_unknown -> assert false
           end
       | (Pbigarrayset(unsafe, _num_dims, elt_kind, layout), arg1 :: argl) ->
           let (argidx, argnewval) = split_last argl in
@@ -2172,7 +2166,12 @@ let rec transl env e =
             | Pbigarray_int64 -> transl_unbox_int dbg env Pint64 argnewval
             | Pbigarray_native_int ->
                 transl_unbox_int dbg env Pnativeint argnewval
-            | _ -> untag_int (transl env argnewval) dbg)
+            | Pbigarray_caml_int ->
+                untag_int (transl env argnewval) dbg
+            | Pbigarray_sint8 | Pbigarray_uint8
+            | Pbigarray_sint16 | Pbigarray_uint16 ->
+                ignore_high_bit_int (untag_int (transl env argnewval) dbg)
+            | Pbigarray_unknown -> assert false)
             dbg)
       | (Pbigarraydim(n), [b]) ->
           let dim_ofs = 4 + n in
@@ -2467,7 +2466,7 @@ and transl_prim_1 env p arg dbg =
   | Pbintofint bi ->
       box_int dbg bi (untag_int (transl env arg) dbg)
   | Pintofbint bi ->
-      force_tag_int (transl_unbox_int dbg env bi arg) dbg
+      tag_int (transl_unbox_int dbg env bi arg) dbg
   | Pcvtbint(bi1, bi2) ->
       box_int dbg bi2 (transl_unbox_int dbg env bi1 arg)
   | Pnegbint bi ->
@@ -2485,9 +2484,9 @@ and transl_prim_1 env p arg dbg =
                       dbg))
   | Pbswap16 ->
       tag_int (Cop(Cextcall("caml_bswap16_direct", typ_int, false, None),
-                   [untag_int (transl env arg) dbg],
+                   [ignore_high_bit_int (untag_int (transl env arg) dbg)],
                    dbg))
-              dbg
+        dbg
   | (Pfield_computed | Psequand | Psequor
     | Paddint | Psubint | Pmulint | Pandint
     | Porint | Pxorint | Plslint | Plsrint | Pasrint
@@ -2820,7 +2819,8 @@ and transl_prim_3 env p arg1 arg2 arg3 dbg =
                       [add_int (transl env arg1)
                           (untag_int(transl env arg2) dbg)
                           dbg;
-                        untag_int(transl env arg3) dbg], dbg))
+                       ignore_high_bit_int (untag_int(transl env arg3) dbg)],
+                           dbg))
   | Pbytessets ->
       return_unit dbg
         (bind "str" (transl env arg1) (fun str ->
@@ -2828,7 +2828,8 @@ and transl_prim_3 env p arg1 arg2 arg3 dbg =
             Csequence(
               make_checkbound dbg [string_length str dbg; idx],
               Cop(Cstore (Byte_unsigned, Assignment),
-                  [add_int str idx dbg; untag_int(transl env arg3) dbg],
+                  [add_int str idx dbg;
+                   ignore_high_bit_int (untag_int(transl env arg3) dbg)],
                   dbg)))))
 
   (* Array operations *)
@@ -2975,7 +2976,8 @@ and transl_unbox_number dbg env bn arg =
 
 and transl_unbox_sized size dbg env exp =
   match size with
-  | Sixteen -> untag_int (transl env exp) dbg
+  | Sixteen ->
+     ignore_high_bit_int (untag_int (transl env exp) dbg)
   | Thirty_two -> transl_unbox_int dbg env Pint32 exp
   | Sixty_four -> transl_unbox_int dbg env Pint64 exp
 
