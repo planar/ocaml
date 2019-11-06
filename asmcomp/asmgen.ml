@@ -74,6 +74,36 @@ let raw_clambda_dump_if ppf
     end;
   if !dump_cmm then Format.fprintf ppf "@.cmm:@."
 
+let should_save_before_emit () =
+  should_save_ir_after Compiler_pass.Scheduling
+
+let linear_unit_info = { Linear_format.
+                         unit_name = "";
+                         items = [];
+                       }
+
+let reset () =
+  if should_save_before_emit () then begin
+    linear_unit_info.unit_name <- Compilenv.current_unit_name ();
+    linear_unit_info.items <- [];
+  end
+
+let save_data dl =
+  if should_save_before_emit () then
+    linear_unit_info.items <- Linear_format.(Data dl) :: linear_unit_info.items;
+  dl
+
+let save_linear f =
+  if should_save_before_emit () then
+    linear_unit_info.items <- Linear_format.(Func f) :: linear_unit_info.items;
+  f
+
+let write_linear output_prefix =
+  if should_save_before_emit () then
+    let filename = output_prefix ^ Clflags.Compiler_ir.(extension Linear) in
+    linear_unit_info.items <- List.rev linear_unit_info.items;
+    Linear_format.save filename linear_unit_info
+
 let should_emit () =
   not (should_stop_after Compiler_pass.Scheduling)
 
@@ -139,13 +169,19 @@ let compile_fundecl ~ppf_dump fd_cmm =
   ++ pass_dump_linear_if ppf_dump dump_linear "Linearized code"
   ++ Profile.record ~accumulate:true "scheduling" Scheduling.fundecl
   ++ pass_dump_linear_if ppf_dump dump_scheduling "After instruction scheduling"
+  ++ save_linear
   ++ emit_fundecl
+
+let compile_data dl =
+  dl
+  ++ save_data
+  ++ emit_data
 
 let compile_phrase ~ppf_dump p =
   if !dump_cmm then fprintf ppf_dump "%a@." Printcmm.phrase p;
   match p with
   | Cfunction fd -> compile_fundecl ~ppf_dump fd
-  | Cdata dl -> emit_data dl
+  | Cdata dl -> compile_data dl
 
 
 (* For the native toplevel: generates generic functions unless
@@ -158,8 +194,9 @@ let compile_genfuns ~ppf_dump f =
        | _ -> ())
     (Cmmgen.generic_functions true [Compilenv.current_unit_infos ()])
 
-let compile_unit _output_prefix asm_filename keep_asm
+let compile_unit output_prefix asm_filename keep_asm
       obj_filename gen =
+  reset ();
   let create_asm = should_emit () &&
                    (keep_asm || not !Emitaux.binary_backend_available) in
   Emitaux.create_asm_file := create_asm;
@@ -167,7 +204,10 @@ let compile_unit _output_prefix asm_filename keep_asm
     ~exceptionally:(fun () -> remove_file obj_filename)
     (fun () ->
        if create_asm then Emitaux.output_channel := open_out asm_filename;
-       Misc.try_finally gen
+       Misc.try_finally
+         (fun () ->
+            gen ();
+            write_linear output_prefix)
          ~always:(fun () ->
              if create_asm then close_out !Emitaux.output_channel)
          ~exceptionally:(fun () ->

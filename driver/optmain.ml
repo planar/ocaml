@@ -68,6 +68,12 @@ module Options = Main_args.Make_optcomp_options (struct
       | Some p ->
         if not (p = pass) then
           fatal "Please specify at most one -stop-after <pass>."
+  let _save_ir_after pass =
+      let module P = Compiler_pass in
+        match P.of_string pass with
+        | None -> () (* this should not occur as we use Arg.Symbol *)
+        | Some pass ->
+          set_save_ir_after pass true
   let _I dir = include_dirs := dir :: !include_dirs
   let _impl = impl
   let _inline spec =
@@ -296,7 +302,7 @@ let main () =
           "Options -i and -stop-after (%s) \
            are  incompatible with -pack, -a, -shared, -output-obj"
           (String.concat "|"
-             (Clflags.Compiler_pass.available_pass_names ~native:true))
+             (P.available_pass_names ~filter:(fun _ -> true) ~native:true))
     end;
     if !make_archive then begin
       Compmisc.init_path ();

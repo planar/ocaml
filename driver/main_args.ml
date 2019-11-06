@@ -95,10 +95,23 @@ let mk_dllpath f =
 ;;
 
 let mk_stop_after ~native f =
-  "-stop-after",
-  Arg.Symbol (Clflags.Compiler_pass.available_pass_names ~native, f),
+  let pass_names = Clflags.Compiler_pass.available_pass_names
+                     ~filter:(fun _ -> true)
+                     ~native
+  in
+  "-stop-after", Arg.Symbol (pass_names, f),
   " Stop after the given compilation pass."
 ;;
+
+let mk_save_ir_after ~native f =
+  let pass_names =
+    Clflags.Compiler_pass.(available_pass_names
+                             ~filter:can_save_ir_after
+                             ~native)
+  in
+  "-save-ir-after", Arg.Symbol (pass_names, f),
+  " Save intermediate representation after the given compilation pass\
+    (may be specified more than once)."
 
 let mk_dtypes f =
   "-dtypes", Arg.Unit f, " (deprecated) same as -annot"
@@ -1069,6 +1082,7 @@ module type Optcomp_options = sig
   val _afl_instrument : unit -> unit
   val _afl_inst_ratio : int -> unit
   val _dinterval : unit -> unit
+  val _save_ir_after : string -> unit
 end;;
 
 module type Opttop_options = sig
@@ -1291,6 +1305,7 @@ struct
     mk_for_pack_opt F._for_pack;
     mk_g_opt F._g;
     mk_stop_after ~native:true F._stop_after;
+    mk_save_ir_after ~native:true F._save_ir_after;
     mk_i F._i;
     mk_I F._I;
     mk_impl F._impl;
