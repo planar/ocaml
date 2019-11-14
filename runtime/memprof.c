@@ -582,6 +582,7 @@ void caml_memprof_oldify_young_roots(void)
 void caml_memprof_minor_update(void)
 {
   uintnat i;
+  uintnat first_kept = trackst.len;
   /* See comment in [caml_memprof_oldify_young_roots] for the number
      of iterations of this loop. */
   for (i = trackst.young; i < trackst.len; i++) {
@@ -593,6 +594,9 @@ void caml_memprof_minor_update(void)
         /* Block has been promoted */
         t->block = Field(t->block, 0);
         t->promoted = 1;
+      } else if (Kept_in_minor_heap (t->block)) {
+        /* Block stays in the minor heap */
+        if (i < first_kept) first_kept = i;
       } else {
         /* Block is dead */
         CAMLassert_young_header(Hd_val(t->block));
@@ -605,7 +609,7 @@ void caml_memprof_minor_update(void)
     trackst.callback = trackst.young;
     check_action_pending();
   }
-  trackst.young = trackst.len;
+  trackst.young = first_kept;
 }
 
 void caml_memprof_do_roots(scanning_action f)
