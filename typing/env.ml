@@ -1083,13 +1083,14 @@ and lookup_module ~load ?loc ~mark lid env : Path.t =
   match lid with
     Lident s ->
       begin match IdTbl.find_name ~mark s env.modules with
-      | exception Not_found
-        when not (Current_unit_name.is s)
-          && !Clflags.transparent_modules
-          && not load ->
-          check_pers_mod s
-            ~loc:(Option.value loc ~default:Location.none);
-          Path.Pident (Ident.create_persistent s)
+      | exception Not_found when not (Current_unit_name.is s) ->
+          let p = Path.Pident (Ident.create_persistent s) in
+          if !Clflags.transparent_modules && not load then
+            check_pers_mod s
+              ~loc:(Option.value loc ~default:Location.none)
+          else
+            report_alerts ?loc p (find_pers_mod s).pm_components.alerts;
+          p
       | p, data ->
           begin match data with
           | Value (data, _) ->
@@ -2222,10 +2223,13 @@ let unit_name_of_filename fn =
   | _ -> None
 
 let persistent_structures_of_dir dir =
-  Load_path.Dir.files dir
-  |> List.to_seq
-  |> Seq.filter_map unit_name_of_filename
-  |> String.Set.of_seq
+  if Load_path.Dir.path dir = "" && !Clflags.transparent_modules then
+    String.Set.empty
+  else
+    Load_path.Dir.files dir
+    |> List.to_seq
+    |> Seq.filter_map unit_name_of_filename
+    |> String.Set.of_seq
 
 (* Save a signature to a file *)
 let save_signature_with_transform cmi_transform ~alerts sg modname filename =
