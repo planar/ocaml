@@ -74,25 +74,68 @@ let raw_clambda_dump_if ppf
     end;
   if !dump_cmm then Format.fprintf ppf "@.cmm:@."
 
+let should_save_before_emit () =
+  should_save_ir_after Compiler_pass.Scheduling
+
+let linear_unit_info = { Linear_format.
+                         unit_name = "";
+                         items = [];
+                       }
+
+let reset () =
+  if should_save_before_emit () then begin
+    linear_unit_info.unit_name <- Compilenv.current_unit_name ();
+    linear_unit_info.items <- [];
+  end
+
+let save_data dl =
+  if should_save_before_emit () then
+    linear_unit_info.items <- Linear_format.(Data dl) :: linear_unit_info.items;
+  dl
+
+let save_linear f =
+  if should_save_before_emit () then
+    linear_unit_info.items <- Linear_format.(Func f) :: linear_unit_info.items;
+  f
+
+let write_linear output_prefix =
+  if should_save_before_emit () then
+    let filename = output_prefix ^ Clflags.Compiler_ir.(extension Linear) in
+    linear_unit_info.items <- List.rev linear_unit_info.items;
+    Linear_format.save filename linear_unit_info
+
+let should_emit () =
+  not (should_stop_after Compiler_pass.Scheduling)
+
+let if_emit_do f x = if should_emit () then f x else ()
+let emit_begin_assembly = if_emit_do Emit.begin_assembly
+let emit_end_assembly = if_emit_do Emit.end_assembly
+let emit_data = if_emit_do Emit.data
+let emit_fundecl =
+  if_emit_do
+    (Profile.record ~accumulate:true "emit" Emit.fundecl)
+
 let rec regalloc ~ppf_dump round fd =
   if round > 50 then
     fatal_error(fd.Mach.fun_name ^
                 ": function too complex, cannot complete register allocation");
   dump_if ppf_dump dump_live "Liveness analysis" fd;
-  if !use_linscan then begin
-    (* Linear Scan *)
-    Interval.build_intervals fd;
-    if !dump_interval then Printmach.intervals ppf_dump ();
-    Linscan.allocate_registers()
-  end else begin
-    (* Graph Coloring *)
-    Interf.build_graph fd;
-    if !dump_interf then Printmach.interferences ppf_dump ();
-    if !dump_prefer then Printmach.preferences ppf_dump ();
-    Coloring.allocate_registers()
-  end;
+  let num_stack_slots =
+    if !use_linscan then begin
+      (* Linear Scan *)
+      Interval.build_intervals fd;
+      if !dump_interval then Printmach.intervals ppf_dump ();
+      Linscan.allocate_registers()
+    end else begin
+      (* Graph Coloring *)
+      Interf.build_graph fd;
+      if !dump_interf then Printmach.interferences ppf_dump ();
+      if !dump_prefer then Printmach.preferences ppf_dump ();
+      Coloring.allocate_registers()
+    end
+  in
   dump_if ppf_dump dump_regalloc "After register allocation" fd;
-  let (newfd, redo_regalloc) = Reload.fundecl fd in
+  let (newfd, redo_regalloc) = Reload.fundecl fd num_stack_slots in
   dump_if ppf_dump dump_reload "After insertion of reloading code" newfd;
   if redo_regalloc then begin
     Reg.reinit(); Liveness.fundecl newfd; regalloc ~ppf_dump (round + 1) newfd
@@ -126,13 +169,19 @@ let compile_fundecl ~ppf_dump fd_cmm =
   ++ pass_dump_linear_if ppf_dump dump_linear "Linearized code"
   ++ Profile.record ~accumulate:true "scheduling" Scheduling.fundecl
   ++ pass_dump_linear_if ppf_dump dump_scheduling "After instruction scheduling"
-  ++ Profile.record ~accumulate:true "emit" Emit.fundecl
+  ++ save_linear
+  ++ emit_fundecl
+
+let compile_data dl =
+  dl
+  ++ save_data
+  ++ emit_data
 
 let compile_phrase ~ppf_dump p =
   if !dump_cmm then fprintf ppf_dump "%a@." Printcmm.phrase p;
   match p with
   | Cfunction fd -> compile_fundecl ~ppf_dump fd
-  | Cdata dl -> Emit.data dl
+  | Cdata dl -> compile_data dl
 
 
 (* For the native toplevel: generates generic functions unless
@@ -145,25 +194,32 @@ let compile_genfuns ~ppf_dump f =
        | _ -> ())
     (Cmmgen.generic_functions true [Compilenv.current_unit_infos ()])
 
-let compile_unit _output_prefix asm_filename keep_asm
+let compile_unit output_prefix asm_filename keep_asm
       obj_filename gen =
-  let create_asm = keep_asm || not !Emitaux.binary_backend_available in
+  reset ();
+  let create_asm = should_emit () &&
+                   (keep_asm || not !Emitaux.binary_backend_available) in
   Emitaux.create_asm_file := create_asm;
   Misc.try_finally
     ~exceptionally:(fun () -> remove_file obj_filename)
     (fun () ->
        if create_asm then Emitaux.output_channel := open_out asm_filename;
-       Misc.try_finally gen
+       Misc.try_finally
+         (fun () ->
+            gen ();
+            write_linear output_prefix)
          ~always:(fun () ->
              if create_asm then close_out !Emitaux.output_channel)
          ~exceptionally:(fun () ->
              if create_asm && not keep_asm then remove_file asm_filename);
-       let assemble_result =
-         Profile.record "assemble"
-           (Proc.assemble_file asm_filename) obj_filename
-       in
-       if assemble_result <> 0
-       then raise(Error(Assembler_error asm_filename));
+       if should_emit () then begin
+         let assemble_result =
+           Profile.record "assemble"
+             (Proc.assemble_file asm_filename) obj_filename
+         in
+         if assemble_result <> 0
+         then raise(Error(Assembler_error asm_filename));
+       end;
        if create_asm && not keep_asm then remove_file asm_filename
     )
 
@@ -173,7 +229,7 @@ let set_export_info (ulambda, prealloc, structured_constants, export) =
 
 let end_gen_implementation ?toplevel ~ppf_dump
     (clambda:clambda_and_constants) =
-  Emit.begin_assembly ();
+  emit_begin_assembly ();
   clambda
   ++ Profile.record "cmm" (Cmmgen.compunit ~ppf_dump)
   ++ Profile.record "compile_phrases" (List.iter (compile_phrase ~ppf_dump))
@@ -191,7 +247,7 @@ let end_gen_implementation ?toplevel ~ppf_dump
        (List.filter (fun s -> s <> "" && s.[0] <> '%')
           (List.map Primitive.native_name !Translmod.primitive_declarations))
     );
-  Emit.end_assembly ()
+  emit_end_assembly ()
 
 let flambda_gen_implementation ?toplevel ~backend ~ppf_dump
     (program:Flambda.program) =
@@ -270,6 +326,27 @@ let compile_implementation_flambda ?toplevel prefixname
     ~required_globals ~backend ~ppf_dump (program:Flambda.program) =
   compile_implementation_gen ?toplevel prefixname
     ~required_globals ~ppf_dump (flambda_gen_implementation ~backend) program
+
+let linear_gen_implementation filename =
+  let open Linear_format in
+  let linear_unit_info,_ = restore filename in
+  let emit_item = function
+    | Data dl -> emit_data dl
+    | Func f -> emit_fundecl f
+  in
+  emit_begin_assembly ();
+  Profile.record "Emit" (List.iter emit_item) linear_unit_info.items;
+  emit_end_assembly ()
+
+let compile_implementation_linear prefixname ~progname =
+  let asmfile =
+    if !keep_asm_file || !Emitaux.binary_backend_available
+    then prefixname ^ ext_asm
+    else Filename.temp_file "camlasm" ext_asm
+  in
+  compile_unit prefixname asmfile !keep_asm_file (prefixname ^ ext_obj)
+    (fun () ->
+      linear_gen_implementation progname)
 
 (* Error report *)
 

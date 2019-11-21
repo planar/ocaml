@@ -178,6 +178,8 @@ let inlining_report = ref false    (* -inlining-report *)
 let afl_instrument = ref Config.afl_instrument (* -afl-instrument *)
 let afl_inst_ratio = ref 100           (* -afl-inst-ratio *)
 
+let function_sections = ref false      (* -function-sections *)
+
 let simplify_rounds = ref None        (* -rounds *)
 let default_simplify_rounds = ref 1        (* -rounds *)
 let rounds () =
@@ -410,6 +412,29 @@ let error_style_reader = {
 
 let unboxed_types = ref false
 
+(* This is used by the -save-ir-after option. *)
+module Compiler_ir = struct
+  type t = Linear
+
+  (* Filename extensions are a convension, but not required. Any filename works,
+     as long as the file starts with the correct magic number. *)
+  let extension t =
+    let ext =
+    match t with
+      | Linear -> "linear"
+    in
+    ".cmir-" ^ ext
+
+  let magic t =
+    let open Config in
+    match t with
+    | Linear -> linear_magic_number
+
+  let all = [
+    Linear;
+  ]
+end
+
 (* This is used by the -stop-after option. *)
 module Compiler_pass = struct
   (* If you add a new pass, the following must be updated:
@@ -417,34 +442,91 @@ module Compiler_pass = struct
      - the manpages in man/ocaml{c,opt}.m
      - the manual manual/manual/cmds/unified-options.etex
   *)
-  type t = Parsing | Typing
+  type t = Parsing | Typing | Scheduling | Emit
 
   let to_string = function
     | Parsing -> "parsing"
     | Typing -> "typing"
+    | Scheduling -> "scheduling"
+    | Emit -> "emit"
 
   let of_string = function
     | "parsing" -> Some Parsing
     | "typing" -> Some Typing
+    | "scheduling" -> Some Scheduling
+    | "emit" -> Some Emit
     | _ -> None
 
   let rank = function
     | Parsing -> 0
     | Typing -> 1
+    | Scheduling -> 50
+    | Emit -> 60
 
   let passes = [
     Parsing;
     Typing;
+    Scheduling;
+    Emit;
   ]
-  let pass_names = List.map to_string passes
+  let is_compilation_pass _ = true
+  let is_native_only = function
+    | Scheduling -> true
+    | Emit -> true
+    | _ -> false
+
+  let enabled is_native t = not (is_native_only t) || is_native
+  let can_save_ir_after = function
+    | Scheduling -> true
+    | _ -> false
+
+  let can_start_from = function
+    | Parsing | Typing | Emit -> true
+    | Scheduling -> false
+
+  let available_pass_names ~filter ~native =
+    passes
+    |> List.filter (enabled native)
+    |> List.filter filter
+    |> List.map to_string
+
+  let compare a b =
+    compare (rank a) (rank b)
 end
 
 let stop_after = ref None (* -stop-after *)
 
 let should_stop_after pass =
-  match !stop_after with
-  | None -> false
-  | Some stop -> Compiler_pass.rank stop <= Compiler_pass.rank pass
+  if Compiler_pass.(rank Typing <= rank pass) && !print_types then true
+  else
+    match !stop_after with
+    | None -> false
+    | Some stop -> Compiler_pass.rank stop <= Compiler_pass.rank pass
+
+let save_ir_after = ref []
+
+let should_save_ir_after pass =
+  List.mem pass !save_ir_after
+
+let set_save_ir_after pass enabled =
+  let other_passes = List.filter ((<>) pass) !save_ir_after in
+  let new_passes =
+    if enabled then
+      pass :: other_passes
+    else
+      other_passes
+  in
+  save_ir_after := new_passes
+
+let start_from = ref None (* -start-from *)
+
+let should_start_from pass =
+  match !start_from with
+  | None -> pass = Compiler_pass.Parsing
+  | Some start ->
+    let start = Compiler_pass.rank start in
+    let cur = Compiler_pass.rank pass in
+    start = cur
 
 module String = Misc.Stdlib.String
 

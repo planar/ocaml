@@ -21,7 +21,7 @@ open Arch
 open Proc
 open Reg
 open Mach
-open Linearize
+open Linear
 open Emitaux
 
 open X86_ast
@@ -70,12 +70,17 @@ let fp = Config.with_frame_pointers
 
 let fastcode_flag = ref true
 
+(* Layout of the stack frame *)
 let stack_offset = ref 0
 
-(* Layout of the stack frame *)
+let num_stack_slots = Array.make Proc.num_register_classes 0
+
+let prologue_required = ref false
+
+let frame_required = ref false
 
 let frame_size () =                     (* includes return address *)
-  if frame_required() then begin
+  if !frame_required then begin
     let sz =
       (!stack_offset + 8 * (num_stack_slots.(0) + num_stack_slots.(1)) + 8
        + (if fp then 8 else 0))
@@ -163,7 +168,18 @@ let emit_label lbl =
 
 let label s = sym (emit_label s)
 
-let def_label s = D.label (emit_label s)
+module Int = Numbers.Int
+
+(* For Spacetime, keep track of code labels that have been emitted.  *)
+let used_labels = ref Int.Set.empty
+
+let mark_used lbl =
+  if Config.spacetime && not (Int.Set.mem lbl !used_labels) then
+    used_labels := Int.Set.add lbl !used_labels
+
+let def_label ?typ s =
+  mark_used s;
+  D.label ?typ (emit_label s)
 
 let emit_Llabel fallthrough lbl =
   if not fallthrough && !fastcode_flag then D.align 4;
@@ -432,7 +448,7 @@ let emit_float_test cmp i lbl =
 (* Deallocate the stack frame before a return or tail call *)
 
 let output_epilogue f =
-  if frame_required() then begin
+  if !frame_required then begin
     let n = frame_size() - 8 - (if fp then 8 else 0) in
     if n <> 0
     then begin
@@ -471,6 +487,26 @@ let emit_global_label s =
   D.global lbl;
   _label lbl
 
+(* Output .text section directive, or named .text.caml.<name> if enabled and
+   supported on the target system. *)
+
+let emit_named_text_section func_name =
+  if !Clflags.function_sections then
+    begin match system with
+    | S_macosx
+    (* Names of section segments in macosx are restricted to 16 characters,
+       but function names are often longer, especially anonymous functions. *)
+    | S_win64 | S_mingw64 | S_cygwin
+    (* Win systems provide named text sections, but configure on these
+       systems does not support function sections. *)
+      ->  assert false
+    | _ -> D.section
+             [ ".text.caml."^(emit_symbol func_name) ]
+             (Some "ax")
+             ["@progbits"]
+    end
+  else D.text ()
+
 (* Output the assembly code for an instruction *)
 
 (* Name of current function *)
@@ -484,13 +520,13 @@ let emit_instr fallthrough i =
   match i.desc with
   | Lend -> ()
   | Lprologue ->
-    assert (Proc.prologue_required ());
+    assert (!prologue_required);
     if fp then begin
       I.push rbp;
       cfi_adjust_cfa_offset 8;
       I.mov rsp rbp;
     end;
-    if frame_required() then begin
+    if !frame_required then begin
       let n = frame_size() - 8 - (if fp then 8 else 0) in
       if n <> 0
       then begin
@@ -813,7 +849,7 @@ let emit_instr fallthrough i =
       end;
       begin match lbl2 with
       | None -> ()
-      | Some lbl -> I.jg (label lbl)
+      | Some lbl -> I.ja (label lbl)
       end
   | Lswitch jumptbl ->
       let lbl = emit_label (new_label()) in
@@ -844,9 +880,14 @@ let emit_instr fallthrough i =
         D.long (ConstSub (ConstLabel(emit_label jumptbl.(i)),
                          ConstLabel lbl))
       done;
-      D.text ()
+      emit_named_text_section !function_name
   | Lentertrap ->
       ()
+  | Ladjust_trap_depth { delta_traps; } ->
+      (* each trap occupies 16 bytes on the stack *)
+      let delta = 16 * delta_traps in
+      cfi_adjust_cfa_offset delta;
+      stack_offset := !stack_offset + delta
   | Lpushtrap { lbl_handler; } ->
       let load_label_addr s arg =
         if !Clflags.pic_code then
@@ -887,7 +928,7 @@ let rec emit_all fallthrough i =
   | Lend -> ()
   | _ ->
       emit_instr fallthrough i;
-      emit_all (Linearize.has_fallthrough i.desc) i.next
+      emit_all (Linear.has_fallthrough i.desc) i.next
 
 let all_functions = ref []
 
@@ -901,8 +942,13 @@ let fundecl fundecl =
   call_gc_sites := [];
   bound_error_sites := [];
   bound_error_call := 0;
+  for i = 0 to Proc.num_register_classes - 1 do
+    num_stack_slots.(i) <- fundecl.fun_num_stack_slots.(i);
+  done;
+  prologue_required := fundecl.fun_prologue_required;
+  frame_required := fundecl.fun_frame_required;
   all_functions := fundecl :: !all_functions;
-  D.text ();
+  emit_named_text_section !function_name;
   D.align 16;
   add_def_symbol fundecl.fun_name;
   if system = S_macosx
@@ -918,7 +964,7 @@ let fundecl fundecl =
   emit_all true fundecl.fun_body;
   List.iter emit_call_gc !call_gc_sites;
   emit_call_bound_errors ();
-  if frame_required() then begin
+  if !frame_required then begin
     let n = frame_size() - 8 - (if fp then 8 else 0) in
     if n <> 0
     then begin
@@ -965,6 +1011,7 @@ let begin_assembly() =
   reset_imp_table();
   float_constants := [];
   all_functions := [];
+  used_labels := Int.Set.empty;
   if system = S_win64 then begin
     D.extrn "caml_young_ptr" QWORD;
     D.extrn "caml_young_limit" QWORD;
@@ -1001,7 +1048,7 @@ let begin_assembly() =
   D.data ();
   emit_global_label "data_begin";
 
-  D.text ();
+  emit_named_text_section (Compilenv.make_symbol (Some "code_begin"));
   emit_global_label "code_begin";
   if system = S_macosx then I.nop (); (* PR#4690 *)
   ()
@@ -1015,10 +1062,14 @@ let emit_spacetime_shapes () =
       begin match fundecl.fun_spacetime_shape with
       | None -> ()
       | Some shape ->
-        let funsym = emit_symbol fundecl.fun_name in
-        D.comment ("Shape for " ^ funsym ^ ":");
-        D.qword (ConstLabel funsym);
-        List.iter (fun (part_of_shape, label) ->
+        (* Instrumentation that refers to dead code may have been eliminated. *)
+        match List.filter (fun (_, l) -> Int.Set.mem l !used_labels) shape with
+        | [] -> ()
+        | shape ->
+          let funsym = emit_symbol fundecl.fun_name in
+          D.comment ("Shape for " ^ funsym ^ ":");
+          D.qword (ConstLabel funsym);
+          List.iter (fun (part_of_shape, label) ->
             let tag =
               match part_of_shape with
               | Direct_call_point _ -> 1
@@ -1033,7 +1084,7 @@ let emit_spacetime_shapes () =
             | Indirect_call_point -> ()
             | Allocation_point -> ()
             end)
-          shape;
+            shape;
           D.qword (Const 0L)
       end)
     !all_functions;
@@ -1051,7 +1102,7 @@ let end_assembly() =
     List.iter (fun (cst,lbl) -> emit_float_constant cst lbl) !float_constants
   end;
 
-  D.text ();
+  emit_named_text_section (Compilenv.make_symbol (Some "code_end"));
   if system = S_macosx then I.nop ();
   (* suppress "ld warning: atom sorting error" *)
 

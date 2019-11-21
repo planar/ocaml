@@ -1943,6 +1943,7 @@ asmcomp/asmgen.cmo : \
     asmcomp/linscan.cmi \
     middle_end/linkage_name.cmi \
     asmcomp/linearize.cmi \
+    file_formats/linear_format.cmi \
     lambda/lambda.cmi \
     asmcomp/interval.cmi \
     asmcomp/interf.cmi \
@@ -1990,6 +1991,7 @@ asmcomp/asmgen.cmx : \
     asmcomp/linscan.cmx \
     middle_end/linkage_name.cmx \
     asmcomp/linearize.cmx \
+    file_formats/linear_format.cmx \
     lambda/lambda.cmx \
     asmcomp/interval.cmx \
     asmcomp/interf.cmx \
@@ -2136,26 +2138,26 @@ asmcomp/asmpackager.cmi : \
 asmcomp/branch_relaxation.cmo : \
     utils/misc.cmi \
     asmcomp/mach.cmi \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     asmcomp/cmm.cmi \
     asmcomp/branch_relaxation_intf.cmo \
     asmcomp/branch_relaxation.cmi
 asmcomp/branch_relaxation.cmx : \
     utils/misc.cmx \
     asmcomp/mach.cmx \
-    asmcomp/linearize.cmx \
+    asmcomp/linear.cmx \
     asmcomp/cmm.cmx \
     asmcomp/branch_relaxation_intf.cmx \
     asmcomp/branch_relaxation.cmi
 asmcomp/branch_relaxation.cmi : \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     asmcomp/branch_relaxation_intf.cmo
 asmcomp/branch_relaxation_intf.cmo : \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     asmcomp/cmm.cmi \
     asmcomp/arch.cmo
 asmcomp/branch_relaxation_intf.cmx : \
-    asmcomp/linearize.cmx \
+    asmcomp/linear.cmx \
     asmcomp/cmm.cmx \
     asmcomp/arch.cmx
 asmcomp/cmm.cmo : \
@@ -2278,14 +2280,18 @@ asmcomp/comballoc.cmi : \
 asmcomp/deadcode.cmo : \
     asmcomp/reg.cmi \
     asmcomp/proc.cmi \
+    utils/numbers.cmi \
     asmcomp/mach.cmi \
     utils/config.cmi \
+    asmcomp/cmm.cmi \
     asmcomp/deadcode.cmi
 asmcomp/deadcode.cmx : \
     asmcomp/reg.cmx \
     asmcomp/proc.cmx \
+    utils/numbers.cmx \
     asmcomp/mach.cmx \
     utils/config.cmx \
+    asmcomp/cmm.cmx \
     asmcomp/deadcode.cmi
 asmcomp/deadcode.cmi : \
     asmcomp/mach.cmi
@@ -2297,9 +2303,10 @@ asmcomp/emit.cmo : \
     asmcomp/x86_ast.cmi \
     asmcomp/reg.cmi \
     asmcomp/proc.cmi \
+    utils/numbers.cmi \
     utils/misc.cmi \
     asmcomp/mach.cmi \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     asmcomp/emitaux.cmi \
     lambda/debuginfo.cmi \
     utils/config.cmi \
@@ -2317,9 +2324,10 @@ asmcomp/emit.cmx : \
     asmcomp/x86_ast.cmi \
     asmcomp/reg.cmx \
     asmcomp/proc.cmx \
+    utils/numbers.cmx \
     utils/misc.cmx \
     asmcomp/mach.cmx \
-    asmcomp/linearize.cmx \
+    asmcomp/linear.cmx \
     asmcomp/emitaux.cmx \
     lambda/debuginfo.cmx \
     utils/config.cmx \
@@ -2330,7 +2338,7 @@ asmcomp/emit.cmx : \
     asmcomp/arch.cmx \
     asmcomp/emit.cmi
 asmcomp/emit.cmi : \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     asmcomp/cmm.cmi
 asmcomp/emitaux.cmo : \
     lambda/debuginfo.cmi \
@@ -2375,11 +2383,29 @@ asmcomp/interval.cmx : \
 asmcomp/interval.cmi : \
     asmcomp/reg.cmi \
     asmcomp/mach.cmi
+asmcomp/linear.cmo : \
+    asmcomp/reg.cmi \
+    asmcomp/mach.cmi \
+    lambda/debuginfo.cmi \
+    asmcomp/cmm.cmi \
+    asmcomp/linear.cmi
+asmcomp/linear.cmx : \
+    asmcomp/reg.cmx \
+    asmcomp/mach.cmx \
+    lambda/debuginfo.cmx \
+    asmcomp/cmm.cmx \
+    asmcomp/linear.cmi
+asmcomp/linear.cmi : \
+    asmcomp/reg.cmi \
+    asmcomp/mach.cmi \
+    lambda/debuginfo.cmi \
+    asmcomp/cmm.cmi
 asmcomp/linearize.cmo : \
     asmcomp/reg.cmi \
     asmcomp/proc.cmi \
     utils/misc.cmi \
     asmcomp/mach.cmi \
+    asmcomp/linear.cmi \
     lambda/debuginfo.cmi \
     utils/config.cmi \
     asmcomp/cmm.cmi \
@@ -2389,15 +2415,14 @@ asmcomp/linearize.cmx : \
     asmcomp/proc.cmx \
     utils/misc.cmx \
     asmcomp/mach.cmx \
+    asmcomp/linear.cmx \
     lambda/debuginfo.cmx \
     utils/config.cmx \
     asmcomp/cmm.cmx \
     asmcomp/linearize.cmi
 asmcomp/linearize.cmi : \
-    asmcomp/reg.cmi \
     asmcomp/mach.cmi \
-    lambda/debuginfo.cmi \
-    asmcomp/cmm.cmi
+    asmcomp/linear.cmi
 asmcomp/linscan.cmo : \
     asmcomp/reg.cmi \
     asmcomp/proc.cmi \
@@ -2477,18 +2502,18 @@ asmcomp/printlinear.cmo : \
     asmcomp/printmach.cmi \
     asmcomp/printcmm.cmi \
     asmcomp/mach.cmi \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     lambda/debuginfo.cmi \
     asmcomp/printlinear.cmi
 asmcomp/printlinear.cmx : \
     asmcomp/printmach.cmx \
     asmcomp/printcmm.cmx \
     asmcomp/mach.cmx \
-    asmcomp/linearize.cmx \
+    asmcomp/linear.cmx \
     lambda/debuginfo.cmx \
     asmcomp/printlinear.cmi
 asmcomp/printlinear.cmi : \
-    asmcomp/linearize.cmi
+    asmcomp/linear.cmi
 asmcomp/printmach.cmo : \
     asmcomp/debug/reg_availability_set.cmi \
     asmcomp/reg.cmi \
@@ -2587,7 +2612,7 @@ asmcomp/schedgen.cmo : \
     asmcomp/reg.cmi \
     asmcomp/proc.cmi \
     asmcomp/mach.cmi \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     asmcomp/cmm.cmi \
     utils/clflags.cmi \
     asmcomp/arch.cmo \
@@ -2596,14 +2621,14 @@ asmcomp/schedgen.cmx : \
     asmcomp/reg.cmx \
     asmcomp/proc.cmx \
     asmcomp/mach.cmx \
-    asmcomp/linearize.cmx \
+    asmcomp/linear.cmx \
     asmcomp/cmm.cmx \
     utils/clflags.cmx \
     asmcomp/arch.cmx \
     asmcomp/schedgen.cmi
 asmcomp/schedgen.cmi : \
     asmcomp/mach.cmi \
-    asmcomp/linearize.cmi
+    asmcomp/linear.cmi
 asmcomp/scheduling.cmo : \
     asmcomp/schedgen.cmi \
     asmcomp/scheduling.cmi
@@ -2611,7 +2636,7 @@ asmcomp/scheduling.cmx : \
     asmcomp/schedgen.cmx \
     asmcomp/scheduling.cmi
 asmcomp/scheduling.cmi : \
-    asmcomp/linearize.cmi
+    asmcomp/linear.cmi
 asmcomp/selectgen.cmo : \
     lambda/simplif.cmi \
     asmcomp/reg.cmi \
@@ -3503,6 +3528,23 @@ file_formats/cmx_format.cmi : \
     middle_end/clambda.cmi
 file_formats/cmxs_format.cmi : \
     utils/misc.cmi
+file_formats/linear_format.cmo : \
+    utils/misc.cmi \
+    parsing/location.cmi \
+    asmcomp/linear.cmi \
+    utils/config.cmi \
+    asmcomp/cmm.cmi \
+    file_formats/linear_format.cmi
+file_formats/linear_format.cmx : \
+    utils/misc.cmx \
+    parsing/location.cmx \
+    asmcomp/linear.cmx \
+    utils/config.cmx \
+    asmcomp/cmm.cmx \
+    file_formats/linear_format.cmi
+file_formats/linear_format.cmi : \
+    asmcomp/linear.cmi \
+    asmcomp/cmm.cmi
 middle_end/closure/closure.cmo : \
     utils/warnings.cmi \
     lambda/switch.cmi \
@@ -5438,7 +5480,7 @@ asmcomp/debug/compute_ranges.cmo : \
     asmcomp/printlinear.cmi \
     utils/numbers.cmi \
     utils/misc.cmi \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     utils/int_replace_polymorphic_compare.cmi \
     asmcomp/debug/compute_ranges_intf.cmo \
     asmcomp/cmm.cmi \
@@ -5447,7 +5489,7 @@ asmcomp/debug/compute_ranges.cmx : \
     asmcomp/printlinear.cmx \
     utils/numbers.cmx \
     utils/misc.cmx \
-    asmcomp/linearize.cmx \
+    asmcomp/linear.cmx \
     utils/int_replace_polymorphic_compare.cmx \
     asmcomp/debug/compute_ranges_intf.cmx \
     asmcomp/cmm.cmx \
@@ -5456,11 +5498,11 @@ asmcomp/debug/compute_ranges.cmi : \
     asmcomp/debug/compute_ranges_intf.cmo
 asmcomp/debug/compute_ranges_intf.cmo : \
     utils/numbers.cmi \
-    asmcomp/linearize.cmi \
+    asmcomp/linear.cmi \
     utils/identifiable.cmi
 asmcomp/debug/compute_ranges_intf.cmx : \
     utils/numbers.cmx \
-    asmcomp/linearize.cmx \
+    asmcomp/linear.cmx \
     utils/identifiable.cmx
 asmcomp/debug/reg_availability_set.cmo : \
     asmcomp/debug/reg_with_debug_info.cmi \

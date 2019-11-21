@@ -22,12 +22,18 @@ open Arch
 open Proc
 open Reg
 open Mach
-open Linearize
+open Linear
 open Emitaux
 
 (* Layout of the stack.  The stack is kept 8-aligned. *)
 
 let stack_offset = ref 0
+
+let num_stack_slots = Array.make Proc.num_register_classes 0
+
+let prologue_required = ref false
+
+let contains_calls = ref false
 
 let frame_size () =
   let size =
@@ -308,7 +314,7 @@ let emit_instr i =
     match i.desc with
       Lend -> ()
     | Lprologue ->
-      assert (Proc.prologue_required ());
+      assert (!prologue_required);
       let n = frame_size() in
       emit_stack_adjust n;
       if !contains_calls then
@@ -610,6 +616,11 @@ let emit_instr i =
         emit_string code_space
     | Lentertrap ->
         ()
+    | Ladjust_trap_depth { delta_traps } ->
+        (* each trap occupies 16 bytes on the stack *)
+        let delta = 16 * delta_traps in
+        emit_stack_adjust delta;
+        stack_offset := !stack_offset + delta
     | Lpushtrap { lbl_handler; } ->
         stack_offset := !stack_offset + 16;
         emit_stack_adjust 16;
@@ -655,6 +666,11 @@ let fundecl fundecl =
   bound_error_call := 0;
   float_literals := [];
   int_literals := [];
+  for i = 0 to Proc.num_register_classes - 1 do
+    num_stack_slots.(i) <- fundecl.fun_num_stack_slots.(i);
+  done;
+  prologue_required := fundecl.fun_prologue_required;
+  contains_calls := fundecl.fun_contains_calls;
   `	.globl	{emit_symbol fundecl.fun_name}\n`;
   emit_debug_info fundecl.fun_dbg;
   `	.type	{emit_symbol fundecl.fun_name}, @function\n`;

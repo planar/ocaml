@@ -80,6 +80,7 @@ let supports_shared_libraries = %%SUPPORTS_SHARED_LIBRARIES%%
 
 let flat_float_array = %%FLAT_FLOAT_ARRAY%%
 
+let function_sections = %%FUNCTION_SECTIONS%%
 let afl_instrument = %%AFL_INSTRUMENT%%
 
 let exec_magic_number = "Caml1999X026"
@@ -101,6 +102,7 @@ and ast_impl_magic_number = "Caml1999M026"
 and ast_intf_magic_number = "Caml1999N026"
 and cmxs_magic_number = "Caml1999D026"
 and cmt_magic_number = "Caml1999T026"
+and linear_magic_number = "Caml1999L026"
 
 let interface_suffix = ref ".mli"
 
@@ -195,6 +197,7 @@ let configuration_variables =
   p_bool "safe_string" safe_string;
   p_bool "default_safe_string" default_safe_string;
   p_bool "flat_float_array" flat_float_array;
+  p_bool "function_sections" function_sections;
   p_bool "afl_instrument" afl_instrument;
   p_bool "windows_unicode" windows_unicode;
   p_bool "supports_shared_libraries" supports_shared_libraries;
@@ -209,6 +212,7 @@ let configuration_variables =
   p "ast_intf_magic_number" ast_intf_magic_number;
   p "cmxs_magic_number" cmxs_magic_number;
   p "cmt_magic_number" cmt_magic_number;
+  p "linear_magic_number" linear_magic_number;
 ]
 
 let print_config_value oc = function

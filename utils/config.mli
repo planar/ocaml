@@ -114,6 +114,9 @@ val cmxs_magic_number: string
 val cmt_magic_number: string
 (** Magic number for compiled interface files *)
 
+val linear_magic_number: string
+(** Magic number for Linear internal representation files *)
+
 val max_tag: int
 (** Biggest tag that can be stored in the header of a regular block. *)
 
@@ -222,6 +225,10 @@ val default_safe_string: bool
 val flat_float_array : bool
 (** Whether the compiler and runtime automagically flatten float
     arrays *)
+
+val function_sections : bool
+(** Whether the compiler was configured to generate
+    each function in a separate section *)
 
 val windows_unicode: bool
 (** Whether Windows Unicode runtime is enabled *)

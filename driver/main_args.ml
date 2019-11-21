@@ -94,10 +94,47 @@ let mk_dllpath f =
   "<dir>  Add <dir> to the run-time search path for shared libraries"
 ;;
 
-let mk_stop_after f =
-  "-stop-after", Arg.Symbol (Clflags.Compiler_pass.pass_names, f),
+let mk_stop_after ~native f =
+  let pass_names = Clflags.Compiler_pass.available_pass_names
+                     ~filter:(fun _ -> true)
+                     ~native
+  in
+  "-stop-after", Arg.Symbol (pass_names, f),
   " Stop after the given compilation pass."
 ;;
+
+let mk_function_sections f =
+  if Config.function_sections then
+    "-function-sections",  Arg.Unit f,
+    " Generate each function in a separate section if target supports it"
+  else
+    let err () =
+      raise (Arg.Bad "OCaml has been configured without support for \
+                      -function-sections")
+    in
+    "-function-sections", Arg.Unit err, " (option not available)"
+;;
+
+let mk_save_ir_after ~native f =
+  let pass_names =
+    Clflags.Compiler_pass.(available_pass_names
+                             ~filter:can_save_ir_after
+                             ~native)
+  in
+  "-save-ir-after", Arg.Symbol (pass_names, f),
+  " Save intermediate representation after the given compilation pass\
+    (may be specified more than once)."
+
+let mk_start_from ~native f =
+  let pass_names =
+    Clflags.Compiler_pass.(available_pass_names
+                             ~filter:can_start_from
+                             ~native)
+  in
+  "-start-from",
+  Arg.Symbol (pass_names, f), " Start from the given compilation pass."
+;;
+
 
 let mk_dtypes f =
   "-dtypes", Arg.Unit f, " (deprecated) same as -annot"
@@ -919,6 +956,7 @@ module type Compiler_options = sig
   val _for_pack : string -> unit
   val _g : unit -> unit
   val _stop_after : string -> unit
+  val _start_from : string -> unit
   val _i : unit -> unit
   val _impl : string -> unit
   val _intf : string -> unit
@@ -1068,6 +1106,8 @@ module type Optcomp_options = sig
   val _afl_instrument : unit -> unit
   val _afl_inst_ratio : int -> unit
   val _dinterval : unit -> unit
+  val _save_ir_after : string -> unit
+  val _function_sections : unit -> unit
 end;;
 
 module type Opttop_options = sig
@@ -1116,7 +1156,8 @@ struct
     mk_dtypes F._annot;
     mk_for_pack_byt F._for_pack;
     mk_g_byt F._g;
-    mk_stop_after F._stop_after;
+    mk_stop_after ~native:false F._stop_after;
+    mk_start_from ~native:false F._start_from;
     mk_i F._i;
     mk_I F._I;
     mk_impl F._impl;
@@ -1289,7 +1330,10 @@ struct
     mk_dtypes F._annot;
     mk_for_pack_opt F._for_pack;
     mk_g_opt F._g;
-    mk_stop_after F._stop_after;
+    mk_stop_after ~native:true F._stop_after;
+    mk_save_ir_after ~native:true F._save_ir_after;
+    mk_start_from ~native:true F._start_from;
+    mk_function_sections F._function_sections;
     mk_i F._i;
     mk_I F._I;
     mk_impl F._impl;

@@ -22,7 +22,7 @@ open Arch
 open Proc
 open Reg
 open Mach
-open Linearize
+open Linear
 open Emitaux
 
 (* Reserved space at bottom of stack *)
@@ -36,6 +36,12 @@ let reserved_stack_space =
 (* Layout of the stack.  The stack is kept 16-aligned. *)
 
 let stack_offset = ref 0
+
+let num_stack_slots = Array.make Proc.num_register_classes 0
+
+let prologue_required = ref false
+
+let contains_calls = ref false
 
 let frame_size () =
   let size =
@@ -506,6 +512,7 @@ module BR = Branch_relaxation.Make (struct
         + (if lbl2 = None then 0 else 1)
     | Lswitch _ -> size 7 (5 + tocload_size()) (5 + tocload_size())
     | Lentertrap -> size 0 (tocload_size()) (tocload_size())
+    | Ladjust_trap_depth _ -> 0
     | Lpushtrap _ -> size 5 (4 + tocload_size()) (4 + tocload_size())
     | Lpoptrap -> 2
     | Lraise _ -> 6
@@ -527,7 +534,7 @@ let emit_instr i =
     match i.desc with
     | Lend -> ()
     | Lprologue ->
-      assert (Proc.prologue_required ());
+      assert (!prologue_required);
       let n = frame_size() in
       if n > 0 then begin
         `	addi	1, 1, {emit_int(-n)}\n`;
@@ -960,6 +967,8 @@ let emit_instr i =
         | ELF32 -> ()
         | ELF64v1 | ELF64v2 -> emit_reload_toc()
         end
+    | Ladjust_trap_depth { delta_traps } ->
+        adjust_stack_offset (trap_size * delta_traps)
     | Lpushtrap { lbl_handler; } ->
         begin match abi with
         | ELF32 ->
@@ -1012,6 +1021,11 @@ let fundecl fundecl =
   call_gc_label := 0;
   float_literals := [];
   jumptables := []; jumptables_lbl := -1;
+  for i = 0 to Proc.num_register_classes - 1 do
+    num_stack_slots.(i) <- fundecl.fun_num_stack_slots.(i);
+  done;
+  prologue_required := fundecl.fun_prologue_required;
+  contains_calls := fundecl.fun_contains_calls;
   begin match abi with
   | ELF32 ->
     emit_string code_space;

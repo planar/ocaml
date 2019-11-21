@@ -18,7 +18,7 @@
 open Format
 open Mach
 open Printmach
-open Linearize
+open Linear
 
 let label ppf l =
   Format.fprintf ppf "L%i" l
@@ -61,6 +61,8 @@ let instr ppf i =
       fprintf ppf "@,endswitch"
   | Lentertrap ->
       fprintf ppf "enter trap"
+  | Ladjust_trap_depth { delta_traps } ->
+      fprintf ppf "adjust trap depth by %d traps" delta_traps
   | Lpushtrap { lbl_handler; } ->
       fprintf ppf "push trap %a" label lbl_handler
   | Lpoptrap ->

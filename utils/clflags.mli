@@ -206,6 +206,7 @@ val dump_flambda_verbose : bool ref
 val classic_inlining : bool ref
 val afl_instrument : bool ref
 val afl_inst_ratio : int ref
+val function_sections : bool ref
 
 val all_passes : string list ref
 val dumped_pass : string -> bool
@@ -232,15 +233,29 @@ val unboxed_types : bool ref
 val insn_sched : bool ref
 val insn_sched_default : bool
 
+module Compiler_ir : sig
+  type t = Linear
+  val extension : t -> string
+  val magic : t -> string
+  val all : t list
+end
+
 module Compiler_pass : sig
-  type t = Parsing | Typing
+  type t = Parsing | Typing | Scheduling | Emit
   val of_string : string -> t option
   val to_string : t -> string
-  val passes : t list
-  val pass_names : string list
+  val is_compilation_pass : t -> bool
+  val available_pass_names : filter:(t -> bool) -> native:bool -> string list
+  val can_save_ir_after : t -> bool
+  val can_start_from : t -> bool
+  val compare : t -> t -> int
 end
 val stop_after : Compiler_pass.t option ref
 val should_stop_after : Compiler_pass.t -> bool
+val set_save_ir_after : Compiler_pass.t -> bool -> unit
+val should_save_ir_after : Compiler_pass.t -> bool
+val start_from : Compiler_pass.t option ref
+val should_start_from : Compiler_pass.t -> bool
 
 val arg_spec : (string * Arg.spec * string) list ref
 
