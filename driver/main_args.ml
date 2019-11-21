@@ -103,6 +103,18 @@ let mk_stop_after ~native f =
   " Stop after the given compilation pass."
 ;;
 
+let mk_function_sections f =
+  if Config.function_sections then
+    "-function-sections",  Arg.Unit f,
+    " Generate each function in a separate section if target supports it"
+  else
+    let err () =
+      raise (Arg.Bad "OCaml has been configured without support for \
+                      -function-sections")
+    in
+    "-function-sections", Arg.Unit err, " (option not available)"
+;;
+
 let mk_save_ir_after ~native f =
   let pass_names =
     Clflags.Compiler_pass.(available_pass_names
@@ -1095,6 +1107,7 @@ module type Optcomp_options = sig
   val _afl_inst_ratio : int -> unit
   val _dinterval : unit -> unit
   val _save_ir_after : string -> unit
+  val _function_sections : unit -> unit
 end;;
 
 module type Opttop_options = sig
@@ -1320,6 +1333,7 @@ struct
     mk_stop_after ~native:true F._stop_after;
     mk_save_ir_after ~native:true F._save_ir_after;
     mk_start_from ~native:true F._start_from;
+    mk_function_sections F._function_sections;
     mk_i F._i;
     mk_I F._I;
     mk_impl F._impl;
