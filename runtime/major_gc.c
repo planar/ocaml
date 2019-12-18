@@ -54,6 +54,13 @@ int caml_gc_phase;        /* always Phase_mark, Pase_clean,
 static value *gray_vals;
 static value *gray_vals_cur, *gray_vals_end;
 static asize_t gray_vals_size;
+#define Pb_size 64
+#define Pb_mask (Pb_size - 1)
+#define Pb_hwm 24
+#define Pb_lwm 16
+#define Queue_prefetch_distance 4
+static value prefetch_buffer[Pb_size];
+
 uintnat caml_allocated_words;
 uintnat caml_dependent_size, caml_dependent_allocated;
 double caml_extra_heap_resources;
@@ -224,7 +231,8 @@ static void init_sweep_phase(void)
 /* auxiliary function of mark_slice */
 static inline value* mark_slice_darken(value *gray_vals_ptr,
                                        value v, mlsize_t i,
-                                       int in_ephemeron, int *slice_pointers)
+                                       int in_ephemeron, int *slice_pointers,
+                                       intnat *work)
 {
   value child;
   header_t chd;
@@ -279,11 +287,15 @@ static inline value* mark_slice_darken(value *gray_vals_ptr,
     if (Is_white_hd (chd)){
       ephe_list_pure = 0;
       Hd_val (child) = Blackhd_hd (chd);
-      *gray_vals_ptr++ = child;
-      if (gray_vals_ptr >= gray_vals_end) {
-        gray_vals_cur = gray_vals_ptr;
-        realloc_gray_vals ();
-        gray_vals_ptr = gray_vals_cur;
+      if (Tag_hd (chd) < No_scan_tag) {
+        *gray_vals_ptr++ = child;
+        if (gray_vals_ptr >= gray_vals_end) {
+          gray_vals_cur = gray_vals_ptr;
+          realloc_gray_vals ();
+          gray_vals_ptr = gray_vals_cur;
+        }
+      } else {
+        *work -= Whsize_wosize(Wosize_hd(chd));
       }
     }
   }
@@ -344,7 +356,8 @@ static value* mark_ephe_aux (value *gray_vals_ptr, intnat *work,
       gray_vals_ptr = mark_slice_darken(gray_vals_ptr,v,
                                         CAML_EPHE_DATA_OFFSET,
                                         /*in_ephemeron=*/1,
-                                        slice_pointers);
+                                        slice_pointers,
+                                        work);
     } else { /* not triggered move to the next one */
       ephes_to_check = &Field(v,CAML_EPHE_LINK_OFFSET);
       return gray_vals_ptr;
@@ -371,10 +384,21 @@ static value* mark_ephe_aux (value *gray_vals_ptr, intnat *work,
 }
 
 
+static void prefetch(value v)
+{
+  __builtin_prefetch(Hp_val(v), 1, 3);
+  __builtin_prefetch(&Field(v, Queue_prefetch_distance - 1), 1, 3);
+}
+
+static uintnat rotate1(uintnat x)
+{
+  return (x << ((sizeof x)*8 - 1)) | (x >> 1);
+}
 
 static void mark_slice (intnat work)
 {
   value *gray_vals_ptr;  /* Local copy of [gray_vals_cur] */
+  uintnat pb_enqueued = 0, pb_dequeued = 0;
   value v;
   header_t hd;
   mlsize_t size, i, start, end; /* [start] is a local copy of [current_index] */
@@ -383,51 +407,163 @@ static void mark_slice (intnat work)
 #endif
   int slice_pointers = 0; /** gcc removes it when not in CAML_INSTR */
 
+  uintnat young_start = (uintnat)caml_young_start;
+  uintnat half_young_len = ((uintnat)caml_young_end - (uintnat)caml_young_start) >> 1;
+#define Is_block_and_not_young(v) \
+  (((intnat)rotate1((uintnat)v - young_start)) > (intnat)half_young_len)
+
   caml_gc_message (0x40, "Marking %"ARCH_INTNAT_PRINTF_FORMAT"d words\n", work);
   caml_gc_message (0x40, "Subphase = %d\n", caml_gc_subphase);
   gray_vals_ptr = gray_vals_cur;
   v = current_value;
   start = current_index;
   while (work > 0){
-    if (v == 0 && gray_vals_ptr > gray_vals){
-      CAMLassert (start == 0);
-      v = *--gray_vals_ptr;
-      CAMLassert (Is_black_val (v));
+    /* Find something to scan */
+    while (v == 0) {
+      /* FIXME: find a better policy than this */
+      if (pb_enqueued < pb_dequeued + Pb_lwm) {
+        if (gray_vals_ptr > gray_vals + Pb_hwm) {
+          while (pb_enqueued <= pb_dequeued + Pb_hwm) {
+            v = *--gray_vals_ptr;
+            prefetch(v);
+            prefetch_buffer[(pb_enqueued++) & Pb_mask] = v;
+          }
+        } else if (gray_vals_ptr > gray_vals) {
+          v = *--gray_vals_ptr;
+          prefetch(v);
+          prefetch_buffer[(pb_enqueued++) & Pb_mask] = v;
+        } else if (pb_enqueued == pb_dequeued) {
+          break;
+        }
+      }
+      v = prefetch_buffer[(pb_dequeued++) & Pb_mask];
+
+      if ((v & 1) == 1) {
+        v &= ~1;
+        // v needs to be darkened
+        header_t hd = Hd_val(v);
+        if (Wosize_hd (hd) == 0) {
+          v = 0;
+          continue;
+        }
+        /* FIXME: Foward_tag */
+        if (Tag_hd(hd) == Infix_tag) {
+          v -= Infix_offset_val(v);
+          hd = Hd_val(v);
+        }
+#ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
+        /* See [caml_darken] for a description of this assertion. */
+        CAMLassert (Is_in_heap (v) || Is_black_hd (hd));
+#endif
+        if (Is_black_hd (hd)) {
+          v = 0;
+          continue;
+        }
+        CAMLassert(Is_white_hd (hd));
+        ephe_list_pure = 0;
+        Hd_val (v) = Blackhd_hd (hd);
+        if (Tag_hd (hd) >= No_scan_tag) {
+          work -= Whsize_wosize(Wosize_val(v));
+          v = 0;
+          continue;
+        }
+      }
     }
+
     if (v != 0){
       hd = Hd_val(v);
       CAMLassert (Is_black_hd (hd));
+      CAMLassert (Tag_hd (hd) != Infix_tag);
+      CAMLassert (Tag_hd (hd) < No_scan_tag);
       size = Wosize_hd (hd);
       end = start + work;
-      if (Tag_hd (hd) < No_scan_tag){
-        start = size < start ? size : start;
-        end = size < end ? size : end;
-        CAMLassert (end >= start);
-        INSTR (slice_fields += end - start;)
-        INSTR (if (size > end)
-                 CAML_INSTR_INT ("major/mark/slice/remain", size - end);)
+      start = size < start ? size : start;
+      end = size < end ? size : end;
+      CAMLassert (end >= start);
+      INSTR (slice_fields += end - start;)
+      INSTR (if (size > end)
+               CAML_INSTR_INT ("major/mark/slice/remain", size - end);)
+
+
+      if (Tag_val(v) == Closure_tag) {
         for (i = start; i < end; i++){
-          gray_vals_ptr = mark_slice_darken(gray_vals_ptr,v,i,
-                                            /*in_ephemeron=*/ 0,
-                                            &slice_pointers);
+          value child = Field(v, i);
+          CAMLassert((Is_block(child) && !Is_young(child))
+                     ==
+                     Is_block_and_not_young(child));
+          if (Is_block_and_not_young(child) &&
+              Is_in_heap (child)) {
+            /* tag as a mark pointer */
+            if (pb_enqueued < pb_dequeued + Pb_size) {
+              prefetch(child);
+              prefetch_buffer[(pb_enqueued++) & Pb_mask] = child | 1;
+            } else {
+              *gray_vals_ptr++ = child | 1;
+              if (gray_vals_ptr == gray_vals_end) {
+                gray_vals_cur = gray_vals_ptr;
+                realloc_gray_vals();
+                gray_vals_ptr = gray_vals_cur;
+              }
+            }
+          }
         }
-        if (end < size){
-          work = 0;
-          start = end;
-          /* [v] doesn't change. */
-          CAMLassert (Is_black_val (v));
-        }else{
-          CAMLassert (end == size);
-          Hd_val (v) = Blackhd_hd (hd);
-          work -= Whsize_wosize(end - start);
-          start = 0;
-          v = 0;
+      } else {
+        for (i = start; i < end; i++){
+          value child = Field(v, i);
+          CAMLassert((Is_block(child) && !Is_young(child))
+                     ==
+                     Is_block_and_not_young(child));
+          if (Is_block_and_not_young(child) &&
+          //if (Is_block(child) && !Is_young(child) &&
+  #ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
+              1
+  #else
+              Is_in_heap(child)
+  #endif
+              ) {
+            /* tag as a mark pointer */
+            /* FIXME: if the queue is full, should we bump the oldest
+               element in the queue, or the new arrival?
+               (Alt: ensure the queue is never full here) */
+#if 0
+            if (pb_enqueued >= pb_dequeued + Pb_size) {
+              /* queue is full */
+              *gray_vals_ptr++ = prefetch_buffer[(pb_dequeued++) & Pb_mask];
+              if (gray_vals_ptr == gray_vals_end) {
+                gray_vals_cur = gray_vals_ptr;
+                realloc_gray_vals();
+                gray_vals_ptr = gray_vals_cur;
+              }
+            }
+            prefetch(child);
+            prefetch_buffer[(pb_enqueued++) & Pb_mask] = child | 1;
+#else
+            if (pb_enqueued < pb_dequeued + Pb_size) {
+              prefetch(child);
+              prefetch_buffer[(pb_enqueued++) & Pb_mask] = child | 1;
+            } else {
+              *gray_vals_ptr++ = child | 1;
+              if (gray_vals_ptr == gray_vals_end) {
+                gray_vals_cur = gray_vals_ptr;
+                realloc_gray_vals();
+                gray_vals_ptr = gray_vals_cur;
+              }
+            }
+#endif
+          }
         }
+      }
+
+
+      if (end < size){
+        work = 0;
+        start = end;
+        /* [v] doesn't change. */
+        CAMLassert (Is_black_val (v));
       }else{
-        /* The block doesn't contain any pointers. */
-        CAMLassert (start == 0);
-        Hd_val (v) = Blackhd_hd (hd);
-        work -= Whsize_wosize(size);
+        CAMLassert (end == size);
+        work -= Whsize_wosize(end - start);
+        start = 0;
         v = 0;
       }
     } else if (caml_gc_subphase == Subphase_mark_roots) {
@@ -483,6 +619,11 @@ static void mark_slice (intnat work)
   gray_vals_cur = gray_vals_ptr;
   current_value = v;
   current_index = start;
+  /* drain prefetch buffer */
+  while (pb_dequeued < pb_enqueued) {
+    *gray_vals_cur++ = prefetch_buffer[(pb_dequeued++) & Pb_mask];
+    if (gray_vals_cur >= gray_vals_end) realloc_gray_vals();
+  }
   INSTR (CAML_INSTR_INT ("major/mark/slice/fields#", slice_fields);)
   INSTR (CAML_INSTR_INT ("major/mark/slice/pointers#", slice_pointers);)
 }
