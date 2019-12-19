@@ -170,7 +170,7 @@ type expression =
     Cconst_int of int * Debuginfo.t
   | Cconst_natint of nativeint * Debuginfo.t
   | Cconst_float of float * Debuginfo.t
-  | Cconst_symbol of string * Debuginfo.t
+  | Cconst_symbol of string * machtype * Debuginfo.t
   | Cconst_pointer of int * Debuginfo.t
   | Cconst_natpointer of nativeint * Debuginfo.t
   | Cblockheader of nativeint * Debuginfo.t

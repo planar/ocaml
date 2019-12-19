@@ -81,8 +81,9 @@ let oper_result_type = function
 let size_expr (env:environment) exp =
   let rec size localenv = function
       Cconst_int _ | Cconst_natint _ -> Arch.size_int
-    | Cconst_symbol _ | Cconst_pointer _ | Cconst_natpointer _ ->
+    | Cconst_pointer _ | Cconst_natpointer _ ->
         Arch.size_addr
+    | Cconst_symbol (_, ty, _) -> Cmm.size_machtype ty
     | Cconst_float _ -> Arch.size_float
     | Cblockheader _ -> Arch.size_int
     | Cvar id ->
@@ -415,7 +416,7 @@ method select_checkbound_extra_args () = []
 
 method select_operation op args _dbg =
   match (op, args) with
-  | (Capply _, Cconst_symbol (func, _dbg) :: rem) ->
+  | (Capply _, Cconst_symbol (func, _ty, _dbg) :: rem) ->
     let label_after = Cmm.new_label () in
     (Icall_imm { func; label_after; }, rem)
   | (Capply _, _) ->
@@ -654,8 +655,8 @@ method emit_expr (env:environment) exp =
   | Cconst_float (n, _dbg) ->
       let r = self#regs_for typ_float in
       Some(self#insert_op env (Iconst_float (Int64.bits_of_float n)) [||] r)
-  | Cconst_symbol (n, _dbg) ->
-      let r = self#regs_for typ_val in
+  | Cconst_symbol (n, ty, _dbg) ->
+      let r = self#regs_for ty in
       Some(self#insert_op env (Iconst_symbol n) [||] r)
   | Cconst_pointer (n, _dbg) ->
       let r = self#regs_for typ_val in  (* integer as Caml value *)

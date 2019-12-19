@@ -150,7 +150,7 @@ let rec expr ppf = function
     fprintf ppf "block-hdr(%s)%s"
       (Nativeint.to_string n) (Debuginfo.to_string d)
   | Cconst_float (n, _dbg) -> fprintf ppf "%F" n
-  | Cconst_symbol (s, _dbg) -> fprintf ppf "\"%s\"" s
+  | Cconst_symbol (s, ty, _dbg) -> fprintf ppf "\"%s\" %a" s machtype ty
   | Cconst_pointer (n, _dbg) -> fprintf ppf "%ia" n
   | Cconst_natpointer (n, _dbg) -> fprintf ppf "%sa" (Nativeint.to_string n)
   | Cvar id -> V.print ppf id
