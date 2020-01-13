@@ -1871,7 +1871,8 @@ and type_module_aux ~alias sttn funct_body anchor env smod =
                                 Cannot_eliminate_dependency mty_functor))
                 in
                 begin match
-                  Includemod.modtypes ~loc:smod.pmod_loc env mty_res nondep_mty
+                  Includemod.modtypes ~mark:Mark_neither
+                    ~loc:smod.pmod_loc env mty_res nondep_mty
                 with
                 | Tcoerce_none -> ()
                 | _ ->
