@@ -1,0 +1,90 @@
+This branch is based on the 4.10 upstream revision of OCaml.
+
+The additional patches are:
+
+patch/js-config-4.09.0
+(cherry-picked from rev 288028727b68c7e6c30587727ce888b75f65ac3c)
+
+patch/gc-tuning-4.09.0
+(cherry-picked from rev e9d6d2f145438dd6a82b56e9b41c8a01e752d81d)
+
+4.10-reraise-by-default
+(cherry-picked from rev 50e94902ca6bb84c33982db858b74322eefd9af8)
+
+PR#8938 (part 1/6) from upstream trunk
+(cherry-picked from rev 7c11fcbdd1c0c00ee056737eb9be577c5cde7b33)
+(squashed with subsequent patch)
+
+PR#8938 (part 2/6) from upstream trunk
+(cherry-picked from rev 3f36ed3d74cb6fbda8b261248c3402afbabad8ff)
+(squashed with subsequent patch)
+
+PR#8938 (part 3/6) from upstream trunk
+(cherry-picked from rev 4d7d53c80544f980ffd398488a69da9372feca8d)
+(squashed with subsequent patch)
+
+PR#8938 (part 4/6) from upstream trunk
+(cherry-picked from rev db674344b12c32bc5c2cc9e08256b1c37fbd3180)
+(squashed with subsequent patch)
+
+PR#8938 (part 5/6) from upstream trunk
+(cherry-picked from rev a992599c6cbd28e271ce478f19545e0e546e2573)
+(squashed with subsequent patch)
+
+PR#8938 from upstream trunk
+(cherry-picked from rev 4353c7581ef368e168399795f2d9d200d2c7318b)
+
+PR#9090 from upstream trunk
+(cherry-picked from rev fe7c8edeaa65d81e2a787ddfa23d70a00131d8d7)
+
+PR#9097 from upstream trunk
+(cherry-picked from rev 6daaf62904df1aa92236de24c47402674e606db0)
+
+Deterministic .cmt files
+(cherry-picked from rev 6a5e266279f735d93ec9019c1d6ed314264aefcf)
+
+PR#9165 from gretay-js/fs-otherlibs
+(cherry-picked from rev 3f33022488edd8260b98bdfa1c1ea35eee3146aa)
+
+PR#8939 (part 1/5) from gretay-js/save-linear
+(cherry-picked from rev d98e66c94bc95f787b836223b5387d38bebf6d49)
+(squashed with subsequent patch)
+
+PR#8939 (part 2/5) from gretay-js/save-linear
+(cherry-picked from rev 598b31d2697d82e5c724e0ae4b121ae7a08aee17)
+(squashed with subsequent patch)
+
+PR#8939 (part 3/5) from gretay-js/save-linear
+(cherry-picked from rev e6b0cc42336c5d13098d1aa56d2107d812e4cee6)
+(squashed with subsequent patch)
+
+PR#8939 (part 4/5) from gretay-js/save-linear
+(cherry-picked from rev e5a4b2122758630ba89f4056bde505d49deb7b99)
+(squashed with subsequent patch)
+
+PR#8939 from gretay-js/save-linear
+(cherry-picked from rev 1200de97288b212e807d32d251a903bde44fbd8a)
+
+PR#9003 (part 1/6) from gretay-js/start-from-emit
+(cherry-picked from rev b70c4b356376e06b0c9b6935fdf2daa889252700)
+(squashed with subsequent patch)
+
+PR#9003 (part 2/6) from gretay-js/start-from-emit
+(cherry-picked from rev 56fe722f412457bd3bd36f658b7e3a0bf40448d0)
+(squashed with subsequent patch)
+
+PR#9003 (part 3/6) from gretay-js/start-from-emit
+(cherry-picked from rev 9680d92fb4a93ee646352adedb6e058eba5ece51)
+(squashed with subsequent patch)
+
+PR#9003 (part 4/6) from gretay-js/start-from-emit
+(cherry-picked from rev 2a69e3ef30ff80b334a7710adea660e0240d0b3a)
+(squashed with subsequent patch)
+
+PR#9003 (part 5/6) from gretay-js/start-from-emit
+(cherry-picked from rev f9fc0a7dfc4b58ada7a51bcd55f6e7bcfd6861b9)
+(squashed with subsequent patch)
+
+PR#9003 from gretay-js/start-from-emit
+(cherry-picked from rev 21d5d26f27ed454603a9105ebc7f0fc5e225a5c1)
+
