@@ -405,7 +405,7 @@ module For_blocks = struct
         end
     in
     let fields = List.mapi (fun index ty -> index, ty) field_tys in
-    let product = Product.Int_indexed.create (Int.Map.of_list fields) in
+    let product = Product.Int_indexed.create field_kind (Int.Map.of_list fields) in
     let size = Targetint.OCaml.of_int (List.length field_tys) in
     match open_or_closed with
     | Open _ -> create_at_least (tag, size) product
@@ -414,11 +414,11 @@ module For_blocks = struct
       | Known tag -> create_exactly tag size product
       | Unknown -> assert false  (* see above *)
 
-  let create_blocks_with_these_tags tags =
+  let create_blocks_with_these_tags ~field_kind tags =
     let at_least =
       Tag.Set.fold (fun tag at_least ->
           Tag_or_unknown_and_size.Map.add (Known tag, Targetint.OCaml.zero)
-            (Product.Int_indexed.create Int.Map.empty)
+            (Product.Int_indexed.create field_kind Int.Map.empty)
             at_least)
         tags
         Tag_or_unknown_and_size.Map.empty

@@ -19,14 +19,18 @@ module T = Type_grammar
 module TEE = Typing_env_extension
 
 module Make (Index : Identifiable.S) = struct
+
+  (* Product are a set of constraints: each new field reduces the
+     concrete set. The empty product is Top. There is no bottom. All
+     components must be of the same kind.
+
+     { 1 => Unknown; 2 => V } is equal to { 2 => V } *)
   type t = {
     components_by_index : T.t Index.Map.t;
+    kind : Flambda_kind.t;
   }
 
-  let _invariant t =
-    Index.Map.cardinal t.components_by_index > 0
-
-  let print ppf { components_by_index; } =
+  let print ppf { components_by_index; kind = _ } =
     Format.fprintf ppf
       "@[<hov 1>(\
         @[<hov 1>(components_by_index@ %a)@]\
@@ -35,14 +39,13 @@ module Make (Index : Identifiable.S) = struct
 
   let print_with_cache ~cache:_ ppf t = print ppf t
 
-  let create components_by_index =
+  let create kind components_by_index =
     (* CR mshinwell: Check that the types are all of the same kind *)
     { components_by_index;
+      kind;
     }
 
-  let create_bottom () =
-    { components_by_index = Index.Map.empty;
-    }
+  let create_bottom _ = assert false
 
   (* CR mshinwell: This "bottom" stuff is still dubious.
      We can't treat 0-sized blocks as bottom; it's legal to bind one of
@@ -52,16 +55,18 @@ module Make (Index : Identifiable.S) = struct
     Index.Map.exists (fun _ typ -> Type_grammar.is_obviously_bottom typ)
       t.components_by_index
 
-  let indexes t = Index.Map.keys t.components_by_index
-
   let width t =
     Targetint.OCaml.of_int (Index.Map.cardinal t.components_by_index)
 
   let components t = Index.Map.data t.components_by_index
 
   let meet env
-        { components_by_index = components_by_index1; }
-        { components_by_index = components_by_index2; } : _ Or_bottom.t =
+        { components_by_index = components_by_index1; kind = kind1; }
+        { components_by_index = components_by_index2; kind = kind2; }
+    : _ Or_bottom.t =
+    if not (Flambda_kind.equal kind1 kind2) then
+      Misc.fatal_errorf "Product.meet between unmatching kinds %a and %a@."
+        Flambda_kind.print kind1 Flambda_kind.print kind2;
     let all_bottom = ref true in
     let env_extension = ref (TEE.empty ()) in
     let components_by_index =
@@ -79,11 +84,14 @@ module Make (Index : Identifiable.S) = struct
         components_by_index2
     in
     if !all_bottom && Index.Map.cardinal components_by_index > 0 then Bottom
-    else Ok ({ components_by_index; }, !env_extension)
+    else Ok ({ components_by_index; kind = kind1; }, !env_extension)
 
   let join env
-        { components_by_index = components_by_index1; }
-        { components_by_index = components_by_index2; } =
+        { components_by_index = components_by_index1; kind = kind1; }
+        { components_by_index = components_by_index2; kind = kind2; } =
+    if not (Flambda_kind.equal kind1 kind2) then
+      Misc.fatal_errorf "Product.meet between unmatching kinds %a and %a@."
+        Flambda_kind.print kind1 Flambda_kind.print kind2;
     let components_by_index =
       Index.Map.merge (fun _index ty1_opt ty2_opt ->
           match ty1_opt, ty2_opt with
@@ -93,39 +101,31 @@ module Make (Index : Identifiable.S) = struct
         components_by_index1
         components_by_index2
     in
-    { components_by_index; }
+    { components_by_index; kind = kind1; }
 
+  (* CR pchambart: widen shouldn't exist *)
   let widen t ~to_match =
-    let missing_indexes = Index.Set.diff (indexes to_match) (indexes t) in
-    let components_by_index =
-      Index.Set.fold (fun index components_by_index ->
-          let kind =
-            match Index.Map.choose to_match.components_by_index with
-            | exception Not_found -> assert false
-            | (_index, ty) -> Type_grammar.kind ty
-          in
-          Index.Map.add index (Type_grammar.unknown kind) components_by_index)
-        missing_indexes
-        t.components_by_index
-    in
-    { components_by_index; }
+    if not (Flambda_kind.equal t.kind to_match.kind) then
+      Misc.fatal_errorf "Product.widen between unmatching kinds %a and %a@."
+        Flambda_kind.print t.kind Flambda_kind.print to_match.kind;
+    t
 
-  let apply_name_permutation ({ components_by_index; } as t) perm =
+  let apply_name_permutation ({ components_by_index; kind; } as t) perm =
     let components_by_index' =
       Index.Map.map_sharing (fun typ ->
           Type_grammar.apply_name_permutation typ perm)
         components_by_index
     in
     if components_by_index == components_by_index' then t
-    else { components_by_index = components_by_index'; }
+    else { components_by_index = components_by_index'; kind = kind; }
 
-  let free_names { components_by_index; } =
+  let free_names { components_by_index; kind = _; } =
     Index.Map.fold (fun _index ty free_names ->
         Name_occurrences.union (Type_grammar.free_names ty) free_names)
       components_by_index
       Name_occurrences.empty
 
-  let map_types ({ components_by_index; } as t)
+  let map_types ({ components_by_index; kind } as t)
         ~(f : Type_grammar.t -> Type_grammar.t Or_bottom.t)
         : _ Or_bottom.t =
     let found_bottom = ref false in
@@ -140,7 +140,7 @@ module Make (Index : Identifiable.S) = struct
     in
     if !found_bottom then Bottom
     else if components_by_index == components_by_index' then Ok t
-    else Ok { components_by_index = components_by_index'; }
+    else Ok { components_by_index = components_by_index'; kind; }
 
   let to_map t = t.components_by_index
 end
