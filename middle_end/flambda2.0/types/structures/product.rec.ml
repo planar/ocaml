@@ -67,36 +67,36 @@ module Make (Index : Identifiable.S) = struct
     if not (Flambda_kind.equal kind1 kind2) then
       Misc.fatal_errorf "Product.meet between unmatching kinds %a and %a@."
         Flambda_kind.print kind1 Flambda_kind.print kind2;
-    let all_bottom = ref true in
+    let any_bottom = ref false in
     let env_extension = ref (TEE.empty ()) in
     let components_by_index =
       Index.Map.merge (fun _index ty1_opt ty2_opt ->
           match ty1_opt, ty2_opt with
-          | None, None | Some _, None | None, Some _ -> None
+          | None, None -> None
+          | Some t, None | None, Some t -> Some t
           | Some ty1, Some ty2 ->
             let ty, env_extension' = Type_grammar.meet' env ty1 ty2 in
             env_extension := TEE.meet env !env_extension env_extension';
-            if not (Type_grammar.is_obviously_bottom ty) then begin
-              all_bottom := false
+            if (Type_grammar.is_obviously_bottom ty) then begin
+              any_bottom := true
             end;
             Some ty)
         components_by_index1
         components_by_index2
     in
-    if !all_bottom && Index.Map.cardinal components_by_index > 0 then Bottom
+    if !any_bottom then Bottom
     else Ok ({ components_by_index; kind = kind1; }, !env_extension)
 
   let join env
         { components_by_index = components_by_index1; kind = kind1; }
         { components_by_index = components_by_index2; kind = kind2; } =
     if not (Flambda_kind.equal kind1 kind2) then
-      Misc.fatal_errorf "Product.meet between unmatching kinds %a and %a@."
+      Misc.fatal_errorf "Product.join between unmatching kinds %a and %a@."
         Flambda_kind.print kind1 Flambda_kind.print kind2;
     let components_by_index =
       Index.Map.merge (fun _index ty1_opt ty2_opt ->
           match ty1_opt, ty2_opt with
-          | None, None -> None
-          | Some ty, None | None, Some ty -> Some ty
+          | None, _ | _, None -> None
           | Some ty1, Some ty2 -> Some (Type_grammar.join' env ty1 ty2))
         components_by_index1
         components_by_index2
