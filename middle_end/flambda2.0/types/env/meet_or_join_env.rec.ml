@@ -22,6 +22,20 @@ type t = {
   right_join_env : Typing_env.t option;
 }
 
+let print ppf { central_env; left_join_env; right_join_env; } =
+  let join_env name ppf = function
+    | None -> ()
+    | Some env ->
+      Format.fprintf ppf "@ @[<hov 1>(%s@ %a)@]@" name
+        Typing_env.print env
+  in
+  Format.fprintf ppf
+    "@[<hov 1>(\
+      @[<hov 1>(central_env@ %a)@]%a%a)@]"
+    Meet_env.print central_env
+    (join_env "left_join_env") left_join_env
+    (join_env "right_join_env") right_join_env
+
 let create_for_meet meet_env =
   { central_env = meet_env;
     left_join_env = None;
