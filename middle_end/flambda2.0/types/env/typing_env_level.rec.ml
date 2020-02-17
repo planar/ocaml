@@ -227,9 +227,14 @@ let one_equation name ty =
 
 let add_or_replace_equation t name ty =
   check_equation t name ty;
-  { t with
-    equations = Name.Map.add name ty t.equations;
-  }
+  if Type_grammar.is_obviously_unknown ty then
+    { t with
+      equations = Name.Map.remove name t.equations;
+    }
+  else
+    { t with
+      equations = Name.Map.add name ty t.equations;
+    }
 
 let _find_equation t name =
   match Name.Map.find name t.equations with
