@@ -1163,7 +1163,9 @@ and type_pat_aux ~exception_allowed ~constrs ~labels ~no_existentials ~mode
         let (sp, constrs, labels) =
           try
             Parmatch.ppat_of_type !env expected_ty
-          with Parmatch.Empty -> raise (Error (loc, !env, Empty_pattern))
+          with Parmatch.Empty ->
+            if mode = Inside_or then raise Need_backtrack
+            else raise (Error (loc, !env, Empty_pattern))
         in
         if sp.ppat_desc = Parsetree.Ppat_any then k' Tpat_any else
         if mode = Inside_or then raise Need_backtrack else
