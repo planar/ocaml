@@ -706,6 +706,9 @@ let non_trivial_join ~initial_env_at_join:env_at_join envs_with_levels =
           add_or_replace_equation result_t name join_ty
         | [] | [_] -> assert false (* see top of function *))
       names_with_equations_in_join
+      (* CR pchambart: This should rather be the first element of the set.
+         Joining is not cheap, even when the env is empty.
+         Because joining with Bottom requires cleaning the free variables *)
       (empty ())
   in
   let cse, extra_cse_bindings =
