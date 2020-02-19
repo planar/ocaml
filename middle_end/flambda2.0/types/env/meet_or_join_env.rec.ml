@@ -36,6 +36,8 @@ let print ppf { central_env; left_join_env; right_join_env; } =
     (join_env "left_join_env") left_join_env
     (join_env "right_join_env") right_join_env
 
+let _ = Meet_or_join_env.print
+
 let create_for_meet meet_env =
   { central_env = meet_env;
     left_join_env = None;
