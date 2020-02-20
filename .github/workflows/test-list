@@ -7,7 +7,7 @@
 # tests/asmgen                      -             not relevant yet
 # tests/ast-invariants              -             not relevant yet
 # tests/backtrace                   FAIL (FIXME)  there is practically no backtrace info
-# tests/basic                       FAIL (FIXME)  Map.remove (see flambdatest/mlexamples/map_remove.ml)
+  tests/basic                       FAIL (FIXME)  Map.remove (see flambdatest/mlexamples/map_remove.ml)
   tests/basic-float
   tests/basic-io
   tests/basic-io-2
