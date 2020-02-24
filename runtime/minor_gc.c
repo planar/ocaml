@@ -654,8 +654,6 @@ CAMLexport void caml_gc_dispatch (void)
          repeat the minor collection. */
       caml_requested_minor_gc = 0;
       caml_empty_minor_heap (caml_young_aging_ratio);
-      /* The minor heap is empty, we can start a major collection. */
-      if (caml_gc_phase == Phase_idle) caml_major_collection_slice (-1);
       CAML_INSTR_TIME (tmr, "dispatch/finalizers_minor");
     }
   }
