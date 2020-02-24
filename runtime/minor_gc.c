@@ -304,11 +304,11 @@ static void oldify_one_aux (value v, value *p, int add_to_ref)
             && (value *) Hp_val (v) < aging_limit){
           CAMLassert ((value *) Hp_val (v) >= caml_young_ptr);
           /* This block stays in the minor heap. */
-          Hd_val (v) = Blackhd_hd (hd);
-          /* Check for old-to-young pointer. */
-          if (Is_in_heap (p)){
+          if (add_to_ref){
+            /* This is a new old-to-young pointer */
             add_to_ref_table (&caml_ref_table, p);
           }
+          Hd_val (v) = Blackhd_hd (hd);
           *p = v;
         }else{
           result = caml_alloc_shr_preserving_profinfo (sz, tag, hd);
@@ -349,11 +349,11 @@ static void oldify_one_aux (value v, value *p, int add_to_ref)
               && (value *) Hp_val (v) < aging_limit){
             CAMLassert ((value *) Hp_val (v) >= caml_young_ptr);
             /* This block stays in the minor heap. */
-            Hd_val (v) = Blackhd_hd (hd);
-            /* Check for old-to-young pointer. */
-            if (Is_in_heap (p)){
+            if (add_to_ref){
+              /* This is a new old-to-young pointer */
               add_to_ref_table (&caml_ref_table, p);
             }
+            Hd_val (v) = Blackhd_hd (hd);
             *p = v;
             p = &Field (v, 0);
             v = f;
