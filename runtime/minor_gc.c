@@ -275,6 +275,7 @@ static void oldify_one_aux (value v, value *p, int add_to_ref)
               CAMLassert (sz == 1);
               p = &Field (v, 0);
               v = Field (v, 0);
+              add_to_ref = 0;
               goto tail_call;
             }
           }else{
@@ -293,6 +294,7 @@ static void oldify_one_aux (value v, value *p, int add_to_ref)
             CAMLassert (sz == 1);
             p = &Field (result, 0);
             v = field0;
+            add_to_ref = 1;
             goto tail_call;
           }
         }
@@ -355,6 +357,7 @@ static void oldify_one_aux (value v, value *p, int add_to_ref)
             *p = v;
             p = &Field (v, 0);
             v = f;
+            add_to_ref = 0;
             goto tail_call;
           }else{
             result = caml_alloc_shr_preserving_profinfo (1, Forward_tag, hd);
@@ -363,6 +366,7 @@ static void oldify_one_aux (value v, value *p, int add_to_ref)
             Field (v, 0) = result;      /*  and forward pointer. */
             p = &Field (result, 0);
             v = f;
+            add_to_ref = 1;
             goto tail_call;
           }
         }else{
