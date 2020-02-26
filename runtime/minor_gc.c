@@ -212,7 +212,7 @@ void caml_set_minor_heap_size (asize_t bsz)
   caml_young_alloc_end = caml_young_semispace_boundary;
   caml_young_alloc_mid =
     caml_young_alloc_start
-    + (caml_young_alloc_end - caml_young_alloc_end) / 2;
+    + (caml_young_alloc_end - caml_young_alloc_start) / 2;
   caml_young_trigger = caml_young_alloc_start;
   caml_young_limit = caml_young_trigger;
   caml_young_ptr = caml_young_alloc_end;
