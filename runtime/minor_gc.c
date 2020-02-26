@@ -166,6 +166,8 @@ static void clear_table (struct generic_table *tbl, char *keep)
   }
 }
 
+/* [bsz] is the size (in bytes) of each allocation arena (i.e. half
+   the actual minor heap size). */
 void caml_set_minor_heap_size (asize_t bsz)
 {
   char *new_heap, *new_stack;
@@ -181,10 +183,10 @@ void caml_set_minor_heap_size (asize_t bsz)
     caml_empty_minor_heap (0.);
   }
   CAMLassert (caml_young_ptr == caml_young_alloc_end);
-  new_heap = caml_stat_alloc_aligned_noexc(bsz, 0, &new_heap_base);
+  new_heap = caml_stat_alloc_aligned_noexc(2 * bsz, 0, &new_heap_base);
   if (new_heap == NULL) caml_raise_out_of_memory();
   new_stack =
-    caml_stat_alloc_noexc (Bsize_wsize (Wsize_bsize (bsz)
+    caml_stat_alloc_noexc (Bsize_wsize (Wsize_bsize (2 * bsz)
                                         / Whsize_wosize (2)));
     /* This stack needs to store at most one pointer for each block of
        size >= 2 in the minor heap. */
@@ -192,7 +194,7 @@ void caml_set_minor_heap_size (asize_t bsz)
     caml_stat_free (new_heap);
     caml_raise_out_of_memory ();
   }
-  if (caml_page_table_add(In_young, new_heap, new_heap + bsz) != 0)
+  if (caml_page_table_add(In_young, new_heap, new_heap + 2 * bsz) != 0)
     caml_raise_out_of_memory();
 
   if (caml_young_start != NULL){
@@ -203,9 +205,9 @@ void caml_set_minor_heap_size (asize_t bsz)
   }
   caml_young_base = new_heap_base;
   caml_young_start = (value *) new_heap;
-  caml_young_end = (value *) (new_heap + bsz);
+  caml_young_end = (value *) (new_heap + 2 * bsz);
   caml_young_semispace_boundary =
-    caml_young_start + Wsize_bsize (bsz) / 2;
+    caml_young_start + Wsize_bsize (bsz);
   caml_young_semispace_cur = 0;
 
   caml_young_alloc_start = caml_young_start;
