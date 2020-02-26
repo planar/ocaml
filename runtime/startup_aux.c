@@ -93,7 +93,7 @@ void caml_parse_ocamlrunparam(void)
     while (*opt != '\0'){
       switch (*opt++){
       case 'a': scanmult (opt, &p); caml_set_allocation_policy (p); break;
-      case 'A': scanmult (opt, &caml_init_aging_percent);
+      case 'A': scanmult (opt, &caml_init_aging_percent); break;
       case 'b': scanmult (opt, &p); caml_record_backtrace(Val_bool (p));
                     break;
       case 'c': scanmult (opt, &p); caml_cleanup_on_exit = (p != 0); break;
