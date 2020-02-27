@@ -25,6 +25,7 @@ CAMLextern value *caml_young_alloc_start, *caml_young_alloc_end;
 CAMLextern value *caml_young_ptr, *caml_young_limit;
 CAMLextern value *caml_young_trigger;
 CAMLextern double caml_young_aging_ratio;
+CAMLextern double caml_latest_aging_ratio;
 extern asize_t caml_minor_heap_wsz;
 extern int caml_in_minor_collection;
 extern double caml_extra_heap_resources_minor;

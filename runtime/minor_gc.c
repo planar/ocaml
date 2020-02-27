@@ -83,6 +83,7 @@ CAMLexport value *caml_young_alloc_start = NULL,
 static value *caml_young_semispace_boundary;
 static uintnat caml_young_semispace_cur;
 CAMLexport double caml_young_aging_ratio;
+CAMLexport double caml_latest_aging_ratio;
 CAMLexport value *caml_young_ptr = NULL, *caml_young_limit = NULL;
 CAMLexport value *caml_young_trigger = NULL;
 
@@ -176,7 +177,8 @@ void caml_set_minor_heap_size (asize_t bsz)
   CAMLassert (bsz >= Bsize_wsize(Minor_heap_min));
   CAMLassert (bsz <= Bsize_wsize(Minor_heap_max));
   CAMLassert (bsz % sizeof (value) == 0);
-  {
+  if (caml_young_ptr != caml_young_alloc_end
+      || caml_latest_aging_ratio != 0.){
     /* We must empty the minor heap. */
     CAML_INSTR_INT ("force_minor/set_minor_heap_size@", 1);
     caml_requested_minor_gc = 0;
@@ -479,6 +481,8 @@ void caml_oldify_mopup (void)
 }
 
 /* Do a partial collection of the minor heap.
+   [aging_ratio] specified how much of the most recently allocated data
+   should be kept in the minor heap. It must be between 0 and 1.
 
    If you need to empty the minor heap, call this function with
    aging_ratio = 0.
@@ -514,13 +518,13 @@ void caml_empty_minor_heap (double aging_ratio)
   /* Then, oldify all other roots while keeping the most recent blocks
      in the minor heap.
   */
+  CAMLassert (aging_ratio >= 0. && aging_ratio <= 1.);
+  caml_latest_aging_ratio = aging_ratio;
   aging_limit =
     caml_young_alloc_start
     + (uintnat)((caml_young_alloc_end - caml_young_alloc_start)
                 * aging_ratio);
-  if (aging_limit > caml_young_alloc_end){
-    aging_limit = caml_young_alloc_end;
-  }
+  CAMLassert (aging_limit <= caml_young_alloc_end);
   caml_oldify_minor_short_lived_roots ();
   CAML_INSTR_TIME (tmr, "minor/short_lived_roots");
   caml_oldify_mopup ();
@@ -673,11 +677,7 @@ CAMLexport void caml_gc_dispatch (void)
 */
 CAMLexport void caml_minor_collection (void)
 {
-  double saved_aging_ratio = caml_young_aging_ratio;
-  caml_requested_minor_gc = 1;
-  caml_young_aging_ratio = 0.;
-  caml_gc_dispatch ();
-  caml_young_aging_ratio = saved_aging_ratio;
+  caml_empty_minor_heap (0.);
 }
 
 CAMLexport value caml_check_urgent_gc (value extra_root)
