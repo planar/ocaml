@@ -760,7 +760,8 @@ void caml_major_collection_slice (intnat howmuch)
                    (intnat) (p * 1000000));
 
   if (caml_gc_phase == Phase_idle){
-    if (caml_young_ptr == caml_young_alloc_end){
+    if (caml_young_ptr == caml_young_alloc_end
+        && caml_latest_aging_ratio == 0.){
       /* We can only start a major GC cycle if the minor allocation arena
          is empty, otherwise we'd have to treat it as a set of roots. */
       start_cycle ();
@@ -831,6 +832,7 @@ void caml_major_collection_slice (intnat howmuch)
 /* This does not call [caml_compact_heap_maybe] because the estimates of
    free and live memory are only valid for a cycle done incrementally.
    Besides, this function itself is called by [caml_compact_heap_maybe].
+   The minor heap must be empty when this function is called.
 */
 void caml_finish_major_cycle (void)
 {
@@ -929,7 +931,7 @@ void caml_set_major_window (int w){
 void caml_finalise_heap (void)
 {
   /* Finishing major cycle (all values become white) */
-  caml_empty_minor_heap ();
+  caml_empty_minor_heap (0.);
   caml_finish_major_cycle ();
   CAMLassert (caml_gc_phase == Phase_idle);
 
