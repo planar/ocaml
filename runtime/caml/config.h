@@ -206,7 +206,7 @@ typedef uint64_t uintnat;
 #define Minor_heap_def 1048576
 
 /* Default aging percentage (i.e. 100 * aging ratio). */
-#define Aging_percent_def 0
+#define Aging_percent_def 1
 
 
 /* Minimum size increment when growing the heap (words).
