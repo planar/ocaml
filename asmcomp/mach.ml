@@ -25,6 +25,9 @@ type integer_operation =
   | Icomp of integer_comparison
   | Icheckbound
 
+type poll_test_direction =
+  Ipending | Inotpending
+
 type float_comparison = Cmm.float_comparison
 
 type test =
@@ -32,6 +35,7 @@ type test =
   | Ifalsetest
   | Iinttest of integer_comparison
   | Iinttest_imm of integer_comparison * int
+  | Ipolltest of poll_test_direction
   | Ifloattest of float_comparison
   | Ioddtest
   | Ieventest
@@ -61,6 +65,7 @@ type operation =
   | Ispecific of Arch.specific_operation
   | Iname_for_debugger of { ident : Backend_var.t; which_parameter : int option;
       provenance : unit option; is_assignment : bool; }
+  | Ipollcall of { check_young_limit: bool }
 
 type instruction =
   { desc: instruction_desc;
@@ -159,5 +164,5 @@ let operation_can_raise op =
   match op with
   | Icall_ind | Icall_imm _ | Iextcall _
   | Iintop (Icheckbound) | Iintop_imm (Icheckbound, _)
-  | Ialloc _ -> true
+  | Ialloc _ | Ipollcall _ -> true
   | _ -> false

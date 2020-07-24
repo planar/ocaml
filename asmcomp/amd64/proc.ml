@@ -300,6 +300,12 @@ let destroyed_at_alloc =
   else
     [| r11 |]
 
+let destroyed_at_poll =
+  if X86_proc.use_plt then
+    destroyed_by_plt_stub
+  else
+    [||]
+
 let destroyed_at_oper = function
     Iop(Icall_ind | Icall_imm _ | Iextcall { alloc = true; }) ->
     all_phys_regs
@@ -308,6 +314,7 @@ let destroyed_at_oper = function
         -> [| rax; rdx |]
   | Iop(Istore(Single, _, _)) -> [| rxmm15 |]
   | Iop(Ialloc _) -> destroyed_at_alloc
+  | Iop(Ipollcall _) -> destroyed_at_poll
   | Iop(Iintop(Imulh | Icomp _) | Iintop_imm((Icomp _), _))
         -> [| rax |]
   | Iswitch(_, _) -> [| rax; rdx |]
@@ -339,7 +346,7 @@ let max_register_pressure = function
         if fp then [| 3; 0 |] else  [| 4; 0 |]
   | Iintop(Idiv | Imod) | Iintop_imm((Idiv | Imod), _) ->
     if fp then [| 10; 16 |] else [| 11; 16 |]
-  | Ialloc _ ->
+  | Ialloc _ | Ipollcall _ ->
     if fp then [| 11 - num_destroyed_by_plt_stub; 16 |]
     else [| 12 - num_destroyed_by_plt_stub; 16 |]
   | Iintop(Icomp _) | Iintop_imm((Icomp _), _) ->
@@ -353,7 +360,7 @@ let max_register_pressure = function
 
 let op_is_pure = function
   | Icall_ind | Icall_imm _ | Itailcall_ind | Itailcall_imm _
-  | Iextcall _ | Istackoffset _ | Istore _ | Ialloc _
+  | Iextcall _ | Istackoffset _ | Istore _ | Ialloc _ | Ipollcall _
   | Iintop(Icheckbound) | Iintop_imm(Icheckbound, _) -> false
   | Ispecific(Ilea _|Isextend32|Izextend32) -> true
   | Ispecific _ -> false

@@ -269,6 +269,7 @@ type gc_call =
   { gc_lbl: label;                      (* Entry label *)
     gc_return_lbl: label;               (* Where to branch after GC *)
     gc_frame: label;                    (* Label of frame descriptor *)
+    is_poll: bool                       (* Poll or allocation? *)
   }
 
 let call_gc_sites = ref ([] : gc_call list)
@@ -635,7 +636,8 @@ let emit_instr fallthrough i =
         call_gc_sites :=
           { gc_lbl = lbl_call_gc;
             gc_return_lbl = lbl_after_alloc;
-            gc_frame = lbl_frame; } :: !call_gc_sites
+            gc_frame = lbl_frame;
+            is_poll = false; } :: !call_gc_sites
       end else begin
         begin match n with
         | 16 -> emit_call "caml_alloc1"
@@ -754,6 +756,13 @@ let emit_instr fallthrough i =
       | Iinttest_imm(cmp, n) ->
           I.cmp (int n) (arg i 0);
           I.j (cond cmp) lbl
+      | Ipolltest(poll_test_type) ->
+        begin
+          I.cmp (domain_field Domainstate.Domain_young_limit) r15;
+          match poll_test_type with
+          | Ipending -> I.jbe lbl
+          | Inotpending -> I.jg lbl
+        end
       | Ifloattest cmp ->
           emit_float_test cmp i lbl
       | Ioddtest ->
@@ -849,6 +858,26 @@ let emit_instr fallthrough i =
           I.pop r11;
           I.jmp r11
       end
+  | Lop(Ipollcall { check_young_limit }) ->
+      if check_young_limit then
+          I.cmp (domain_field Domainstate.Domain_young_limit) r15;
+      let gc_call_label = new_label () in  
+      let label_after_gc = new_label() in
+      let lbl_frame =
+        record_frame_label i.live (Dbg_alloc [])
+      in
+      begin
+        match check_young_limit with
+        | true -> I.jbe (label gc_call_label)
+        | false -> I.jmp (label gc_call_label)
+      end;
+      call_gc_sites :=
+        { gc_lbl = gc_call_label;
+          gc_return_lbl = label_after_gc;
+          gc_frame = lbl_frame;
+          is_poll = true } :: !call_gc_sites;
+      def_label label_after_gc;
+      ()
 
 let rec emit_all fallthrough i =
   match i.desc with
