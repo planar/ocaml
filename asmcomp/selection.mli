@@ -16,4 +16,4 @@
 (* Selection of pseudo-instructions, assignment of pseudo-registers,
    sequentialization. *)
 
-val fundecl: Cmm.fundecl -> Mach.fundecl
+val fundecl: future_funcnames:Set.Make(String).t -> Cmm.fundecl -> Mach.fundecl

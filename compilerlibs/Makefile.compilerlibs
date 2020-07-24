@@ -207,6 +207,7 @@ ASMCOMP = \
   asmcomp/interval.cmo \
   asmcomp/printmach.cmo \
   asmcomp/selectgen.cmo \
+	asmcomp/polling.cmo \
   asmcomp/selection.cmo \
   asmcomp/comballoc.cmo \
   asmcomp/CSEgen.cmo \

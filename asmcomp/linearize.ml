@@ -171,7 +171,7 @@ let linear i n contains_calls =
             copy_instr (Lcondbranch(invert_test test, lbl)) i n2
         | Iend, _, _ ->
             let (lbl_end, n2) = get_label n1 in
-            copy_instr (Lcondbranch(test, lbl_end)) i (linear ifnot n2)
+            copy_instr (Lcondbranch(test, lbl_end)) i (linear ifnot n2)   
         | _,  Iend, _ ->
             let (lbl_end, n2) = get_label n1 in
             copy_instr (Lcondbranch(invert_test test, lbl_end)) i

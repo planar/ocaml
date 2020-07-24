@@ -65,11 +65,16 @@ let invert_integer_test = function
     Isigned cmp -> Isigned(Cmm.negate_integer_comparison cmp)
   | Iunsigned cmp -> Iunsigned(Cmm.negate_integer_comparison cmp)
 
+let invert_poll_test = function
+    Ipending -> Inotpending
+  | Inotpending -> Ipending 
+
 let invert_test = function
     Itruetest -> Ifalsetest
   | Ifalsetest -> Itruetest
   | Iinttest(cmp) -> Iinttest(invert_integer_test cmp)
   | Iinttest_imm(cmp, n) -> Iinttest_imm(invert_integer_test cmp, n)
+  | Ipolltest(test_type) -> Ipolltest (invert_poll_test test_type)
   | Ifloattest(cmp) -> Ifloattest(Cmm.negate_float_comparison cmp)
   | Ieventest -> Ioddtest
   | Ioddtest -> Ieventest

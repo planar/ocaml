@@ -2121,6 +2121,7 @@ asmcomp/asmgen.cmo : \
     asmcomp/printlinear.cmi \
     asmcomp/printcmm.cmi \
     typing/primitive.cmi \
+    asmcomp/polling.cmi \
     utils/misc.cmi \
     asmcomp/mach.cmi \
     parsing/location.cmi \
@@ -2163,6 +2164,7 @@ asmcomp/asmgen.cmx : \
     asmcomp/printlinear.cmx \
     asmcomp/printcmm.cmx \
     typing/primitive.cmx \
+    asmcomp/polling.cmx \
     utils/misc.cmx \
     asmcomp/mach.cmx \
     parsing/location.cmx \
@@ -2718,6 +2720,14 @@ asmcomp/mach.cmi : \
     lambda/debuginfo.cmi \
     asmcomp/cmm.cmi \
     asmcomp/arch.cmo
+asmcomp/polling.cmo : \
+    asmcomp/mach.cmi \
+    asmcomp/polling.cmi
+asmcomp/polling.cmx : \
+    asmcomp/mach.cmx \
+    asmcomp/polling.cmi
+asmcomp/polling.cmi : \
+    asmcomp/mach.cmi
 asmcomp/printcmm.cmo : \
     utils/targetint.cmi \
     lambda/lambda.cmi \
@@ -2880,6 +2890,7 @@ asmcomp/scheduling.cmi : \
 asmcomp/selectgen.cmo : \
     asmcomp/reg.cmi \
     asmcomp/proc.cmi \
+    asmcomp/polling.cmi \
     utils/numbers.cmi \
     utils/misc.cmi \
     asmcomp/mach.cmi \
@@ -2893,6 +2904,7 @@ asmcomp/selectgen.cmo : \
 asmcomp/selectgen.cmx : \
     asmcomp/reg.cmx \
     asmcomp/proc.cmx \
+    asmcomp/polling.cmx \
     utils/numbers.cmx \
     utils/misc.cmx \
     asmcomp/mach.cmx \
