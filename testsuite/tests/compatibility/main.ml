@@ -1,5 +1,6 @@
 (* TEST
 modules = "stub.c"
+compare_programs = "false"
 * pass
 ** bytecode
 ** native
