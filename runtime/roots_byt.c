@@ -38,7 +38,7 @@ CAMLexport void (*caml_scan_roots_hook) (scanning_action f) = NULL;
  */
 void caml_oldify_minor_long_lived_roots (void)
 {
-  caml_scan_global_young_roots(&caml_oldify_one);
+  caml_scan_global_young_roots(caml_oldify_one_p);
   caml_final_oldify_young_roots_first ();
   caml_final_oldify_young_roots_last ();
 }
@@ -53,21 +53,21 @@ void caml_oldify_minor_short_lived_roots (void)
 
   /* The stack */
   for (sp = Caml_state->extern_sp; sp < Caml_state->stack_high; sp++) {
-    caml_oldify_one (*sp, sp);
+    (*caml_oldify_one_p) (*sp, sp);
   }
   /* Local C roots */  /* FIXME do the old-frame trick ? */
   for (lr = Caml_state->local_roots; lr != NULL; lr = lr->next) {
     for (i = 0; i < lr->ntables; i++){
       for (j = 0; j < lr->nitems; j++){
         sp = &(lr->tables[i][j]);
-        caml_oldify_one (*sp, sp);
+        (*caml_oldify_one_p) (*sp, sp);
       }
     }
   }
   /* Memprof */
   caml_memprof_oldify_young_roots ();
   /* Hook */
-  if (caml_scan_roots_hook != NULL) (*caml_scan_roots_hook)(&caml_oldify_one);
+  if (caml_scan_roots_hook != NULL) (*caml_scan_roots_hook)(caml_oldify_one_p);
 }
 
 /* Call [caml_darken] on all roots */

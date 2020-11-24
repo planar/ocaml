@@ -333,6 +333,7 @@ static void oldify_one_aux_0 (value v, value *p)
   }
 }
 
+#if 0
 /* Note that the tests on the tag depend on the fact that Infix_tag,
    Forward_tag, and No_scan_tag are contiguous. */
 static void oldify_one_aux (value v, value *p, int add_to_ref)
@@ -483,13 +484,21 @@ static void oldify_one_aux (value v, value *p, int add_to_ref)
   }
 }
 
+#else
+
+#define oldify_one_aux(v, p, r) oldify_one_aux_0 (v, p)
+
+#endif /* 0 */
+
 /* External version for root scanning, etc. This will never create a new
    old-to-young reference.
 */
-void caml_oldify_one (value v, value *p)
+static void caml_oldify_one (value v, value *p)
 {
   oldify_one_aux (v, p, 0);
 }
+
+void (*caml_oldify_one_p) (value v, value *p) = &caml_oldify_one;
 
 /* Test if the ephemeron is alive, everything outside minor heap is alive */
 static inline int ephe_check_alive_data(struct caml_ephe_ref_elt *re){
@@ -505,6 +514,81 @@ static inline int ephe_check_alive_data(struct caml_ephe_ref_elt *re){
   }
   return 1;
 }
+
+/* [caml_oldify_mopup], specialized for the case where
+   [caml_aging_ratio] = 0. */
+static void caml_oldify_mopup_0 (void)
+{
+  value v, new_v, f;
+  mlsize_t i;
+  struct caml_ephe_ref_elt *re;
+  int redo = 1;
+  header_t hd;
+
+  while (redo){
+    redo = 0;
+    while (oldify_stack_ptr != Caml_state->young_stack){
+      v = *--oldify_stack_ptr;             /* Get the head. */
+      hd = Hd_val (v);
+      if (hd == 0){
+        /* Promoted to the major heap. */
+        new_v = Field (v, 0);                /* Follow forward pointer. */
+        hd = Hd_val (new_v);
+        CAMLassert_young_header (hd);
+        CAMLassert (Tag_hd (hd) < Infix_tag);
+
+        f = Field (new_v, 0);
+        if (Is_block (f) && Is_young (f)){
+          oldify_one_aux_0 (f, &Field (new_v, 0));
+        }
+        for (i = 1; i < Wosize_hd (hd); i++){
+          f = Field (v, i);
+          if (Is_block (f) && Is_young (f)){
+            oldify_one_aux_0 (f, &Field (new_v, i));
+          }else{
+            Field (new_v, i) = f;
+          }
+        }
+      }else{
+        /* Kept in the minor heap. */
+        CAMLassert_young_header (hd);
+        CAMLassert (Is_black_hd (hd));
+        for (i = 0; i < Wosize_hd (hd); i++){
+          f = Field (v, i);
+          if (Is_block (f) && Is_young (f)){
+            oldify_one_aux_0 (f, &Field (v, i));
+          }
+        }
+      }
+    }
+
+    /* Oldify the data in the minor heap of alive ephemeron
+       During minor collection keys outside the minor heap are considered
+       alive */
+    for (re = Caml_state->ephe_ref_table->base;
+         re < Caml_state->ephe_ref_table->ptr; re++){
+      /* look only at ephemeron with data in the minor heap */
+      if (re->offset == 1){
+        value *data = &Field(re->ephe,1);
+        if (*data != caml_ephe_none && Is_block (*data) && Is_young (*data)){
+          if (Hd_val (*data) == 0){ /* Value copied to major heap */
+            *data = Field (*data, 0);
+          }else if (Kept_in_minor_heap (*data)){
+            CAMLassert ((value *) Hp_val (*data) >= Caml_state->young_ptr);
+            /* Stays in minor heap. */
+          } else {
+            if (ephe_check_alive_data(re)){
+              oldify_one_aux_0 (*data, data);
+              redo = 1; /* young_stack can still be empty */
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+#if 0
 
 /* Finish the work that was put off by [oldify_one_aux].
    Note that [oldify_one_aux] itself is called by [caml_oldify_mopup], so we
@@ -581,78 +665,12 @@ void caml_oldify_mopup (void)
   }
 }
 
-/* [caml_oldify_mopup], specialized for the case where
-   [caml_aging_ratio] = 0. */
-static void caml_oldify_mopup_0 (void)
+#else
+void caml_oldify_mopup (void)
 {
-  value v, new_v, f;
-  mlsize_t i;
-  struct caml_ephe_ref_elt *re;
-  int redo = 1;
-  header_t hd;
-
-  while (redo){
-    redo = 0;
-    while (oldify_stack_ptr != Caml_state->young_stack){
-      v = *--oldify_stack_ptr;             /* Get the head. */
-      hd = Hd_val (v);
-      if (hd == 0){
-        /* Promoted to the major heap. */
-        new_v = Field (v, 0);                /* Follow forward pointer. */
-        hd = Hd_val (new_v);
-        CAMLassert_young_header (hd);
-        CAMLassert (Tag_hd (hd) < Infix_tag);
-
-        f = Field (new_v, 0);
-        if (Is_block (f) && Is_young (f)){
-          oldify_one_aux_0 (f, &Field (new_v, 0));
-        }
-        for (i = 1; i < Wosize_hd (hd); i++){
-          f = Field (v, i);
-          if (Is_block (f) && Is_young (f)){
-            oldify_one_aux_0 (f, &Field (new_v, i));
-          }else{
-            Field (new_v, i) = f;
-          }
-        }
-      }else{
-        /* Kept in the minor heap. */
-        CAMLassert_young_header (hd);
-        CAMLassert (Is_black_hd (hd));
-        for (i = 0; i < Wosize_hd (hd); i++){
-          f = Field (v, i);
-          if (Is_block (f) && Is_young (f)){
-            oldify_one_aux_0 (f, &Field (v, i));
-          }
-        }
-      }
-    }
-
-    /* Oldify the data in the minor heap of alive ephemeron
-       During minor collection keys outside the minor heap are considered
-       alive */
-    for (re = Caml_state->ephe_ref_table->base;
-         re < Caml_state->ephe_ref_table->ptr; re++){
-      /* look only at ephemeron with data in the minor heap */
-      if (re->offset == 1){
-        value *data = &Field(re->ephe,1);
-        if (*data != caml_ephe_none && Is_block (*data) && Is_young (*data)){
-          if (Hd_val (*data) == 0){ /* Value copied to major heap */
-            *data = Field (*data, 0);
-          }else if (Kept_in_minor_heap (*data)){
-            CAMLassert ((value *) Hp_val (*data) >= Caml_state->young_ptr);
-            /* Stays in minor heap. */
-          } else {
-            if (ephe_check_alive_data(re)){
-              oldify_one_aux_0 (*data, data);
-              redo = 1; /* young_stack can still be empty */
-            }
-          }
-        }
-      }
-    }
-  }
+  caml_oldify_mopup_0 ();
 }
+#endif /* 0 */
 
 /* Do a partial collection of the minor heap.
    [aging_ratio] specifies how much of the most recently allocated data
@@ -671,6 +689,11 @@ void caml_empty_minor_heap (double aging_ratio)
   struct caml_ref_table *old_ref_table;
 
   CAMLassert (aging_ratio >= 0. && aging_ratio <= 1.);
+  if (aging_ratio == 0.0){
+    caml_oldify_one_p = &oldify_one_aux_0;
+  }else{
+    caml_oldify_one_p = &caml_oldify_one;
+  }
   Caml_state->latest_aging_ratio = aging_ratio;
   if (Caml_state->young_ptr != Caml_state->young_alloc_end){
     CAMLassert_young_header(*(header_t*)Caml_state->young_ptr);
@@ -797,6 +820,7 @@ void caml_empty_minor_heap (double aging_ratio)
   ++ Caml_state->stat_minor_collections;
   caml_memprof_renew_minor_sample();
   if (caml_minor_gc_end_hook != NULL) (*caml_minor_gc_end_hook) ();
+  caml_oldify_one_p = &caml_oldify_one;
 #ifdef DEBUG
   {
     value *p;

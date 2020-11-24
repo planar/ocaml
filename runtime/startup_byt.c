@@ -444,7 +444,7 @@ CAMLexport void caml_main(char_os **argv)
   caml_stat_free(trail.section);
   /* Ensure that the globals are in the major heap. */
   caml_oldify_init ();
-  caml_oldify_one (caml_global_data, &caml_global_data);
+  (*caml_oldify_one_p) (caml_global_data, &caml_global_data);
   caml_oldify_mopup ();
   /* Initialize system libraries */
   caml_sys_init(exe_name, argv + pos);
@@ -533,7 +533,7 @@ CAMLexport value caml_startup_code_exn(
   caml_global_data = caml_input_value_from_block(data, data_size);
   /* Ensure that the globals are in the major heap. */
   caml_oldify_init ();
-  caml_oldify_one (caml_global_data, &caml_global_data);
+  (*caml_oldify_one_p) (caml_global_data, &caml_global_data);
   caml_oldify_mopup ();
   /* Record the sections (for caml_get_section_table in meta.c) */
   caml_section_table = section_table;

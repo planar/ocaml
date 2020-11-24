@@ -507,6 +507,10 @@ CAMLprim value caml_gc_set(value v)
   /* This field was added in 4.12.0. */
   if (Wosize_val (v) >= 12){
     new_aging_ratio = norm_aging (Field (v, 11)) / 100.;
+#if 0
+#else
+    CAMLassert (new_aging_ratio == 0.0);
+#endif
     if (new_aging_ratio != Caml_state->young_aging_ratio){
       Caml_state->young_aging_ratio = new_aging_ratio;
       caml_gc_message (0x20, "New aging ratio: %.2f\n",

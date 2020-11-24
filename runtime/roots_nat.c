@@ -271,7 +271,7 @@ void caml_oldify_minor_long_lived_roots (void)
     }
   }
 
-  caml_scan_global_young_roots(&caml_oldify_one);
+  caml_scan_global_young_roots(caml_oldify_one_p);
   caml_final_oldify_young_roots_first ();
   caml_final_oldify_young_roots_last ();
 }
@@ -342,7 +342,7 @@ void caml_oldify_minor_short_lived_roots (void)
   /* Memprof */
   caml_memprof_oldify_young_roots ();
   /* Hook */
-  if (caml_scan_roots_hook != NULL) (*caml_scan_roots_hook)(&caml_oldify_one);
+  if (caml_scan_roots_hook != NULL) (*caml_scan_roots_hook)(caml_oldify_one_p);
 }
 
 uintnat caml_incremental_roots_count = 0;

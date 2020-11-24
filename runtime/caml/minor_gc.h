@@ -68,7 +68,7 @@ CAMLextern void caml_gc_dispatch (void);
 CAMLextern void caml_minor_collection (void);
 CAMLextern void garbage_collection (void); /* runtime/signals_nat.c */
 extern void caml_oldify_init (void);
-extern void caml_oldify_one (value, value *);
+extern void (*caml_oldify_one_p) (value, value *);
 extern void caml_oldify_mopup (void);
 
 extern void caml_realloc_ref_table (struct caml_ref_table *);
@@ -90,7 +90,7 @@ void caml_alloc_minor_tables (void);
 #define Oldify(p) do{ \
     value __oldify__v__ = *p; \
     if (Is_block (__oldify__v__) && Is_young (__oldify__v__)){ \
-      caml_oldify_one (__oldify__v__, (p)); \
+      (*caml_oldify_one_p) (__oldify__v__, (p)); \
     } \
   }while(0)
 

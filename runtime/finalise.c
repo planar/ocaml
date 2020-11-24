@@ -277,10 +277,10 @@ void caml_final_oldify_young_roots_first (void)
 
   CAMLassert (finalisable_first.old <= finalisable_first.young);
   for (i = finalisable_first.old; i < finalisable_first.young; i++){
-    caml_oldify_one(finalisable_first.table[i].fun,
-                    &finalisable_first.table[i].fun);
-    caml_oldify_one(finalisable_first.table[i].val,
-                    &finalisable_first.table[i].val);
+    (*caml_oldify_one_p)(finalisable_first.table[i].fun,
+                         &finalisable_first.table[i].fun);
+    (*caml_oldify_one_p)(finalisable_first.table[i].val,
+                         &finalisable_first.table[i].val);
   }
   finalisable_first.old = finalisable_first.young;
 }
@@ -297,8 +297,8 @@ void caml_final_oldify_young_roots_last (void)
 
   CAMLassert (finalisable_last.old <= finalisable_last.young);
   for (i = finalisable_last.old; i < finalisable_last.young; i++){
-    caml_oldify_one(finalisable_last.table[i].fun,
-                    &finalisable_last.table[i].fun);
+    (*caml_oldify_one_p)(finalisable_last.table[i].fun,
+                         &finalisable_last.table[i].fun);
   }
 }
 

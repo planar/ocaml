@@ -489,8 +489,8 @@ void caml_memprof_oldify_young_roots(void)
      allocated recently, which are close to the end of the trackst
      array. */
   for (i = trackst.young; i < trackst.len; i++)
-    caml_oldify_one(trackst.entries[i].user_data,
-                    &trackst.entries[i].user_data);
+    (*caml_oldify_one_p)(trackst.entries[i].user_data,
+                         &trackst.entries[i].user_data);
 }
 
 void caml_memprof_minor_update(void)
