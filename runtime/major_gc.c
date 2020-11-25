@@ -48,6 +48,7 @@ Caml_inline double fmin(double a, double b) {
 #endif
 
 uintnat caml_percent_free;
+static uintnat marked_words, heap_wsz_at_cycle_start;
 uintnat caml_major_heap_increment;
 CAMLexport char *caml_heap_start;
 char *caml_gc_sweep_hp;
@@ -176,6 +177,7 @@ void caml_darken (value v, value *p /* not used */)
     CAMLassert (!Is_blue_hd (h));
     if (Is_white_hd (h)){
       ephe_list_pure = 0;
+      marked_words += Whsize_hd (h);
       if (t < No_scan_tag){
         Hd_val (v) = Grayhd_hd (h);
         *gray_vals_cur++ = v;
@@ -194,6 +196,8 @@ static void start_cycle (void)
   caml_gc_message (0x01, "Starting new major GC cycle\n");
   caml_darken_all_roots_start ();
   caml_gc_phase = Phase_mark;
+  marked_words = 0;
+  heap_wsz_at_cycle_start = Caml_state->stat_heap_wsz;
   caml_gc_subphase = Subphase_mark_roots;
   markhp = NULL;
   ephe_list_pure = 1;
@@ -283,12 +287,27 @@ Caml_inline value* mark_slice_darken(value *gray_vals_ptr,
 #endif
     if (Is_white_hd (chd)){
       ephe_list_pure = 0;
+<<<<<<< HEAD
       Hd_val (child) = Grayhd_hd (chd);
       *gray_vals_ptr++ = child;
       if (gray_vals_ptr >= gray_vals_end) {
         gray_vals_cur = gray_vals_ptr;
         realloc_gray_vals ();
         gray_vals_ptr = gray_vals_cur;
+||||||| parent of 40a14c1983... add instrumentation for compaction heuristic
+      Hd_val (child) = Blackhd_hd (chd);
+      if( Tag_hd(chd) < No_scan_tag ) {
+        mark_stack_push(stk, child, 0, work);
+      } else {
+        *work -= 1; /* Account for header */
+=======
+      Hd_val (child) = Blackhd_hd (chd);
+      marked_words += Whsize_hd (chd);
+      if( Tag_hd(chd) < No_scan_tag ) {
+        mark_stack_push(stk, child, 0, work);
+      } else {
+        *work -= 1; /* Account for header */
+>>>>>>> 40a14c1983... add instrumentation for compaction heuristic
       }
     }
   }
@@ -792,6 +811,19 @@ void caml_major_collection_slice (intnat howmuch)
 
   if (caml_gc_phase == Phase_idle){
     CAML_EV_BEGIN(EV_MAJOR_CHECK_AND_COMPACT);
+    caml_gc_message (0x200, "marked words = %"
+                     ARCH_INTNAT_PRINTF_FORMAT "u words\n",
+                     marked_words);
+    caml_gc_message (0x200, "heap size at start of cycle = %"
+                     ARCH_INTNAT_PRINTF_FORMAT "u words\n",
+                     heap_wsz_at_cycle_start);
+    if (marked_words == 0){
+      caml_gc_message (0x200, "actual overhead at start of cycle = +inf\n");
+    }else{
+      caml_gc_message (0x200, "actual overhead at start of cycle = %.2g%%\n",
+                       100.0 * (heap_wsz_at_cycle_start - marked_words)
+                       / marked_words);
+    }
     caml_compact_heap_maybe ();
     CAML_EV_END(EV_MAJOR_CHECK_AND_COMPACT);
   }
