@@ -256,7 +256,7 @@ let destroyed_at_oper = function
       all_phys_regs
   | Iop(Iextcall { alloc = false; }) ->
       destroyed_at_c_call
-  | Iop(Ialloc _) ->
+  | Iop(Ialloc _) | Iop(Ipollcall _) ->
       [| reg_x8 |]
   | Iop(Iintoffloat | Ifloatofint | Iload(Single, _) | Istore(Single, _, _)) ->
       [| reg_d7 |]            (* d7 / s7 destroyed *)
