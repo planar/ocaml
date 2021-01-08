@@ -39,6 +39,7 @@ module type S = sig
 
        N.B. The only instructions supported are the following:
                 - Lop (Ialloc _)
+                - Lop (Ipollcall _)
                 - Lop (Iintop Icheckbound)
                 - Lop (Iintop_imm (Icheckbound, _))
                 - Lop (Ispecific _)
@@ -64,6 +65,11 @@ module type S = sig
      : num_bytes:int
     -> dbginfo:Debuginfo.alloc_dbginfo
     -> Linear.instruction_desc
+
+  val relax_poll
+     : check_young_limit:bool
+    -> Linear.instruction_desc
+
   val relax_intop_checkbound
      : unit
     -> Linear.instruction_desc

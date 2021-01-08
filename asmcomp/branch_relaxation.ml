@@ -51,6 +51,7 @@ module Make (T : Branch_relaxation_intf.S) = struct
       in
       match instr.desc with
       | Lop (Ialloc _)
+      | Lop (Ipollcall _)
       | Lop (Iintop (Icheckbound))
       | Lop (Iintop_imm (Icheckbound, _))
       | Lop (Ispecific _) ->
@@ -86,6 +87,9 @@ module Make (T : Branch_relaxation_intf.S) = struct
           fixup did_fix (pc + T.instr_size instr.desc) instr.next
         else
           match instr.desc with
+          | Lop (Ipollcall { check_young_limit }) ->
+            instr.desc <- T.relax_poll ~check_young_limit;
+            fixup true (pc + T.instr_size instr.desc) instr.next
           | Lop (Ialloc { bytes = num_bytes; dbginfo }) ->
             instr.desc <- T.relax_allocation ~num_bytes ~dbginfo;
             fixup true (pc + T.instr_size instr.desc) instr.next

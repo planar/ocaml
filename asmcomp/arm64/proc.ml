@@ -256,7 +256,7 @@ let destroyed_at_oper = function
       all_phys_regs
   | Iop(Iextcall { alloc = false; }) ->
       destroyed_at_c_call
-  | Iop(Ialloc _) ->
+  | Iop(Ialloc _) | Iop(Ipollcall _) ->
       [| reg_x8 |]
   | Iop(Iintoffloat | Ifloatofint | Iload(Single, _) | Istore(Single, _, _)) ->
       [| reg_d7 |]            (* d7 / s7 destroyed *)
@@ -285,7 +285,7 @@ let max_register_pressure = function
 
 let op_is_pure = function
   | Icall_ind | Icall_imm _ | Itailcall_ind | Itailcall_imm _
-  | Iextcall _ | Istackoffset _ | Istore _ | Ialloc _
+  | Iextcall _ | Istackoffset _ | Istore _ | Ialloc _ | Ipollcall _
   | Iintop(Icheckbound) | Iintop_imm(Icheckbound, _)
   | Ispecific(Ishiftcheckbound _) -> false
   | _ -> true

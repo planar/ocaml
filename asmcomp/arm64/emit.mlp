@@ -392,6 +392,8 @@ let num_call_gc_and_check_bound_points instr =
     | Lend -> totals
     | Lop (Ialloc _) when !fastcode_flag ->
       loop instr.next (call_gc + 1, check_bound)
+    | Lop (Ipollcall _) ->
+      loop instr.next (call_gc + 1, check_bound)
     | Lop (Iintop Icheckbound)
     | Lop (Iintop_imm (Icheckbound, _))
     | Lop (Ispecific (Ishiftcheckbound _)) ->
@@ -404,6 +406,7 @@ let num_call_gc_and_check_bound_points instr =
     (* The following four should never be seen, since this function is run
        before branch relaxation. *)
     | Lop (Ispecific (Ifar_alloc _))
+    | Lop (Ispecific (Ifar_pollcall _))
     | Lop (Ispecific Ifar_intop_checkbound)
     | Lop (Ispecific (Ifar_intop_imm_checkbound _))
     | Lop (Ispecific (Ifar_shiftcheckbound _)) -> assert false
@@ -450,6 +453,7 @@ module BR = Branch_relaxation.Make (struct
 
     let classify_instr = function
       | Lop (Ialloc _)
+      | Lop (Ipollcall _)
       | Lop (Iintop Icheckbound)
       | Lop (Iintop_imm (Icheckbound, _))
       | Lop (Ispecific (Ishiftcheckbound _)) -> Some Bcc
@@ -496,6 +500,16 @@ module BR = Branch_relaxation.Make (struct
       let based = match addr with Iindexed _ -> 0 | Ibased _ -> 1 in
       based + begin match size with Single -> 2 | _ -> 1 end
     | Lop (Ialloc _) when !fastcode_flag -> 5
+    | Lop (Ipollcall { check_young_limit }) ->
+      begin match check_young_limit with
+      | true -> 3
+      | false -> 1
+      end
+    | Lop (Ispecific (Ifar_pollcall { check_young_limit })) ->
+      begin match check_young_limit with
+      | true -> 4
+      | false -> 2
+      end    
     | Lop (Ispecific (Ifar_alloc _)) when !fastcode_flag -> 6
     | Lop (Ialloc { bytes = num_bytes; _ })
     | Lop (Ispecific (Ifar_alloc { bytes = num_bytes; _ })) ->
@@ -535,6 +549,7 @@ module BR = Branch_relaxation.Make (struct
       | Ifalsetest -> 1
       | Iinttest _ -> 2
       | Iinttest_imm _ -> 2
+      | Ipolltest _ -> 2
       | Ifloattest _ -> 2
       | Ioddtest -> 1
       | Ieventest -> 1
@@ -554,6 +569,9 @@ module BR = Branch_relaxation.Make (struct
       | Lambda.Raise_reraise -> 1
       | Lambda.Raise_notrace -> 4
       end
+
+  let relax_poll ~check_young_limit =
+    Lop (Ispecific (Ifar_pollcall { check_young_limit }))
 
   let relax_allocation ~num_bytes ~dbginfo =
     Lop (Ispecific (Ifar_alloc { bytes = num_bytes; dbginfo }))
@@ -611,6 +629,34 @@ let assembly_code_for_allocation i ~n ~far ~dbginfo =
     end;
     `{emit_label lbl_frame}:	add	{emit_reg i.res.(0)}, {emit_reg reg_alloc_ptr}, #8\n`
   end
+
+let assembly_code_for_poll i ~far ~check_young_limit =
+  let lbl_frame =
+    record_frame_label i.live (Dbg_alloc [])
+  in
+  let lbl_after_poll = new_label() in
+  let lbl_call_gc = new_label() in
+  if check_young_limit then begin 
+    let offset = Domainstate.(idx_of_field Domain_young_limit) * 8 in
+      `	ldr	{emit_reg reg_tmp1}, [{emit_reg reg_domain_state_ptr}, #{emit_int offset}]\n`;
+      `	cmp	{emit_reg reg_alloc_ptr}, {emit_reg reg_tmp1}\n`;
+  end;
+  if not far then begin
+    match check_young_limit with
+    | true -> `	b.ls	{emit_label lbl_call_gc}\n`
+    | false -> ` b {emit_label lbl_call_gc}\n`
+  end else begin
+    let lbl = new_label () in
+      if check_young_limit then
+        `	b.hi	{emit_label lbl}\n`;
+    `	b	{emit_label lbl_call_gc}\n`;
+    `{emit_label lbl}:\n`
+  end;
+  `{emit_label lbl_after_poll}:`;
+  call_gc_sites :=
+    { gc_lbl = lbl_call_gc;
+      gc_return_lbl = lbl_after_poll;
+      gc_frame_lbl = lbl_frame; } :: !call_gc_sites
 
 (* Output .text section directive, or named .text.caml.<name> if enabled. *)
 
@@ -765,6 +811,10 @@ let emit_instr i =
         assembly_code_for_allocation i ~n ~far:false ~dbginfo
     | Lop(Ispecific (Ifar_alloc { bytes = n; dbginfo })) ->
         assembly_code_for_allocation i ~n ~far:true ~dbginfo
+    | Lop(Ipollcall { check_young_limit }) ->
+        assembly_code_for_poll i ~far:false ~check_young_limit
+    | Lop(Ispecific (Ifar_pollcall { check_young_limit })) ->
+        assembly_code_for_poll i ~far:true ~check_young_limit
     | Lop(Iintop_imm(Iadd, n)) ->
         emit_addimm i.res.(0) i.arg.(0) n
     | Lop(Iintop_imm(Isub, n)) ->
@@ -897,6 +947,16 @@ let emit_instr i =
             emit_cmpimm i.arg.(0) n;
             let comp = name_for_comparison cmp in
             `	b.{emit_string comp}	{emit_label lbl}\n`
+        | Ipolltest test_direction ->
+            let offset = Domainstate.(idx_of_field Domain_young_limit) * 8 in
+            `	ldr	{emit_reg reg_tmp1}, [{emit_reg reg_domain_state_ptr}, #{emit_int offset}]\n`;
+            begin match test_direction with
+              | Ipending ->
+                `	cmp	{emit_reg reg_alloc_ptr}, {emit_reg reg_tmp1}\n`;
+              | Inotpending -> 
+                `	cmp	{emit_reg reg_tmp1}, {emit_reg reg_alloc_ptr}\n`;
+            end;
+            `	b.ls {emit_label lbl}\n`
         | Ifloattest cmp ->
             let comp =
               match cmp with

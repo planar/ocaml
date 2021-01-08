@@ -35,7 +35,7 @@ let polls_added_to_loops () =
     else
       (* We should have hit a poll on the jump at the end of the
          first iteration *)
-      assert (minors_before + 1 = minors_now)
+      assert (minors_before < minors_now)
   done
 
 (* This next pair of functions test that polls are added to the prologue 
@@ -210,7 +210,7 @@ let polls_added_to_self_recursive_functions () =
     ignore(self_rec_func 2);
     let minors_after = minor_gcs () in
       (* should be at least one minor gc from polls in self_rec_func *)
-      assert(minors_before < minors_after)
+      assert(minors_before+1 = minors_after)
 
 (* this pair of mutually recursive functions is to test that a poll is
    correctly placed in the first one compiled *)
