@@ -856,11 +856,13 @@ let emit_instr fallthrough i =
           I.pop r11;
           I.jmp r11
       end
-  | Lop(Ipollcall { check_young_limit }) ->
+  | Lop(Ipollcall { check_young_limit; return_label }) ->
       if check_young_limit then
           I.cmp (domain_field Domainstate.Domain_young_limit) r15;
       let gc_call_label = new_label () in  
-      let label_after_gc = new_label() in
+      let label_after_gc = match return_label with
+                  | None -> new_label()
+                  | Some(lbl) -> lbl in
       let lbl_frame =
         record_frame_label i.live (Dbg_alloc [])
       in
@@ -873,7 +875,9 @@ let emit_instr fallthrough i =
         { gc_lbl = gc_call_label;
           gc_return_lbl = label_after_gc;
           gc_frame = lbl_frame; } :: !call_gc_sites;
-      def_label label_after_gc;
+      match return_label with
+      | None -> def_label label_after_gc
+      | _ -> ();
       ()
 
 let rec emit_all fallthrough i =

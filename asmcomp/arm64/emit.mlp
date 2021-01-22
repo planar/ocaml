@@ -500,12 +500,12 @@ module BR = Branch_relaxation.Make (struct
       let based = match addr with Iindexed _ -> 0 | Ibased _ -> 1 in
       based + begin match size with Single -> 2 | _ -> 1 end
     | Lop (Ialloc _) when !fastcode_flag -> 5
-    | Lop (Ipollcall { check_young_limit }) ->
+    | Lop (Ipollcall { check_young_limit; _ }) ->
       begin match check_young_limit with
       | true -> 3
       | false -> 1
       end
-    | Lop (Ispecific (Ifar_pollcall { check_young_limit })) ->
+    | Lop (Ispecific (Ifar_pollcall { check_young_limit; _ })) ->
       begin match check_young_limit with
       | true -> 4
       | false -> 2
@@ -570,8 +570,8 @@ module BR = Branch_relaxation.Make (struct
       | Lambda.Raise_notrace -> 4
       end
 
-  let relax_poll ~check_young_limit =
-    Lop (Ispecific (Ifar_pollcall { check_young_limit }))
+  let relax_poll ~check_young_limit ~return_label =
+    Lop (Ispecific (Ifar_pollcall { check_young_limit; return_label }))
 
   let relax_allocation ~num_bytes ~dbginfo =
     Lop (Ispecific (Ifar_alloc { bytes = num_bytes; dbginfo }))
@@ -630,11 +630,13 @@ let assembly_code_for_allocation i ~n ~far ~dbginfo =
     `{emit_label lbl_frame}:	add	{emit_reg i.res.(0)}, {emit_reg reg_alloc_ptr}, #8\n`
   end
 
-let assembly_code_for_poll i ~far ~check_young_limit =
+let assembly_code_for_poll i ~far ~check_young_limit ~return_label =
   let lbl_frame =
     record_frame_label i.live (Dbg_alloc [])
   in
-  let lbl_after_poll = new_label() in
+  let lbl_after_poll = match return_label with
+  | None -> new_label()
+  | Some(lbl) -> lbl in
   let lbl_call_gc = new_label() in
   if check_young_limit then begin 
     let offset = Domainstate.(idx_of_field Domain_young_limit) * 8 in
@@ -652,7 +654,10 @@ let assembly_code_for_poll i ~far ~check_young_limit =
     `	b	{emit_label lbl_call_gc}\n`;
     `{emit_label lbl}:\n`
   end;
-  `{emit_label lbl_after_poll}:`;
+  begin match return_label with
+  | None -> `{emit_label lbl_after_poll}:`
+  | _ -> ()
+  end;
   call_gc_sites :=
     { gc_lbl = lbl_call_gc;
       gc_return_lbl = lbl_after_poll;
@@ -811,10 +816,10 @@ let emit_instr i =
         assembly_code_for_allocation i ~n ~far:false ~dbginfo
     | Lop(Ispecific (Ifar_alloc { bytes = n; dbginfo })) ->
         assembly_code_for_allocation i ~n ~far:true ~dbginfo
-    | Lop(Ipollcall { check_young_limit }) ->
-        assembly_code_for_poll i ~far:false ~check_young_limit
-    | Lop(Ispecific (Ifar_pollcall { check_young_limit })) ->
-        assembly_code_for_poll i ~far:true ~check_young_limit
+    | Lop(Ipollcall { check_young_limit; return_label }) ->
+        assembly_code_for_poll i ~far:false ~check_young_limit ~return_label
+    | Lop(Ispecific (Ifar_pollcall { check_young_limit; return_label })) ->
+        assembly_code_for_poll i ~far:true ~check_young_limit ~return_label
     | Lop(Iintop_imm(Iadd, n)) ->
         emit_addimm i.res.(0) i.arg.(0) n
     | Lop(Iintop_imm(Isub, n)) ->

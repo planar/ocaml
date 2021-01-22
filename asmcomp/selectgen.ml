@@ -1171,7 +1171,7 @@ method emit_fundecl ~future_funcnames f =
   self#insert_moves env loc_arg rarg;
   let polled_body = 
     if Polling.requires_prologue_poll ~future_funcnames body then
-      instr_cons (Iop(Ipollcall { check_young_limit = true })) [||] [||] body
+      instr_cons (Iop(Ipollcall { check_young_limit = true; return_label = None })) [||] [||] body
     else
       body
     in  

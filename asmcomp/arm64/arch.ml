@@ -42,7 +42,7 @@ type cmm_label = int
   (* Do not introduce a dependency to Cmm *)
 
 type specific_operation =
-  | Ifar_pollcall of { check_young_limit: bool }
+  | Ifar_pollcall of { check_young_limit: bool; return_label: cmm_label option }
   | Ifar_alloc of { bytes : int; dbginfo : Debuginfo.alloc_dbginfo }
   | Ifar_intop_checkbound
   | Ifar_intop_imm_checkbound of { bound : int; }
@@ -106,7 +106,7 @@ let print_addressing printreg addr ppf arg =
 
 let print_specific_operation printreg op ppf arg =
   match op with
-  | Ifar_pollcall { check_young_limit; } ->
+  | Ifar_pollcall { check_young_limit; _ } ->
     fprintf ppf "(far) poll %s" 
       (if check_young_limit then "(check young limit)" else "")
   | Ifar_alloc { bytes; } ->

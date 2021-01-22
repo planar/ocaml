@@ -68,6 +68,7 @@ module type S = sig
 
   val relax_poll
      : check_young_limit:bool
+    -> return_label:Cmm.label option
     -> Linear.instruction_desc
 
   val relax_intop_checkbound
