@@ -21,7 +21,7 @@ module StringSet = Set.Make (String)
 let add_fused_poll_before (f : Mach.instruction) : Mach.instruction =
   let poll_instr =
     Mach.instr_cons
-      (Iop (Ipollcall { check_young_limit = false }))
+      (Iop (Ipollcall { check_young_limit = false; return_label = None }))
       [||] [||] (Mach.end_instr ())
   in
   Mach.instr_cons
@@ -31,7 +31,7 @@ let add_fused_poll_before (f : Mach.instruction) : Mach.instruction =
 (* Add a poll instruction which checks the young limit itself before [f] *)
 let add_checked_poll_before check_young_limit (f : Mach.instruction) : Mach.instruction =
     Mach.instr_cons
-      (Iop (Ipollcall { check_young_limit }))
+      (Iop (Ipollcall { check_young_limit; return_label = None }))
       [||] [||] f
 
 (* Check a sequence of instructions from [f] and return whether

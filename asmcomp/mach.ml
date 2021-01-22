@@ -64,7 +64,7 @@ type operation =
   | Ifloatofint | Iintoffloat
   | Iopaque
   | Ispecific of Arch.specific_operation
-  | Ipollcall of { check_young_limit: bool }
+  | Ipollcall of { check_young_limit: bool; return_label: Cmm.label option }
 
 type instruction =
   { desc: instruction_desc;
