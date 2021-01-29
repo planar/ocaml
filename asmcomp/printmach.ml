@@ -150,7 +150,7 @@ let operation op arg ppf res =
   | Iopaque -> fprintf ppf "opaque %a" reg arg.(0)
   | Ispecific op ->
       Arch.print_specific_operation reg op ppf arg
-  | Ipollcall { check_young_limit = check } -> 
+  | Ipollcall { check_young_limit = check } ->
     fprintf ppf "poll ";
     if check then
       fprintf ppf "check+call"
