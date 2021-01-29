@@ -509,7 +509,7 @@ module BR = Branch_relaxation.Make (struct
       begin match check_young_limit with
       | true -> 4
       | false -> 2
-      end    
+      end
     | Lop (Ispecific (Ifar_alloc _)) when !fastcode_flag -> 6
     | Lop (Ialloc { bytes = num_bytes; _ })
     | Lop (Ispecific (Ifar_alloc { bytes = num_bytes; _ })) ->
@@ -638,7 +638,7 @@ let assembly_code_for_poll i ~far ~check_young_limit ~return_label =
   | None -> new_label()
   | Some(lbl) -> lbl in
   let lbl_call_gc = new_label() in
-  if check_young_limit then begin 
+  if check_young_limit then begin
     let offset = Domainstate.(idx_of_field Domain_young_limit) * 8 in
       `	ldr	{emit_reg reg_tmp1}, [{emit_reg reg_domain_state_ptr}, #{emit_int offset}]\n`;
       `	cmp	{emit_reg reg_alloc_ptr}, {emit_reg reg_tmp1}\n`;
@@ -958,7 +958,7 @@ let emit_instr i =
             begin match test_direction with
               | Ipending ->
                 `	cmp	{emit_reg reg_alloc_ptr}, {emit_reg reg_tmp1}\n`;
-              | Inotpending -> 
+              | Inotpending ->
                 `	cmp	{emit_reg reg_tmp1}, {emit_reg reg_alloc_ptr}\n`;
             end;
             `	b.ls {emit_label lbl}\n`

@@ -6,7 +6,7 @@
 
 (* This set of tests examine poll insertion behaviour. We do this by requesting
    and checking the number of minor collections at various points to determine
-   whether a poll was correctly added. There are some subtleties because 
+   whether a poll was correctly added. There are some subtleties because
    [caml_empty_minor_heap] will not increment the minor_collections stat if
    nothing has been allocated on the minor heap, so we sometimes need to
    add an allocation before we call [request_minor_gc]. The [minor_gcs]
@@ -38,8 +38,8 @@ let polls_added_to_loops () =
       assert (minors_before < minors_now)
   done
 
-(* This next pair of functions test that polls are added to the prologue 
-   of a function. We need a loop in this function to avoid the poll getting 
+(* This next pair of functions test that polls are added to the prologue
+   of a function. We need a loop in this function to avoid the poll getting
    removed by the leaf function optimisation *)
 let func_with_added_poll_because_loop () =
   (* the loop here means this is not treated as a leaf *)
@@ -118,12 +118,12 @@ let allocating_func_nested_ifs minors_before =
   let minors_now = minor_gcs () in
   assert (minors_before = minors_now);
   (* No poll yet *)
-  if Sys.opaque_identity(minors_before) > 0 then 
+  if Sys.opaque_identity(minors_before) > 0 then
     if Sys.opaque_identity(minors_before) > 1 then
       ignore (Sys.opaque_identity (ref 42))
     else
       ignore (Sys.opaque_identity (ref 42))
-  else 
+  else
     if Sys.opaque_identity(minors_before) < 5 then
       ignore (Sys.opaque_identity (ref 42))
     else
@@ -131,7 +131,7 @@ let allocating_func_nested_ifs minors_before =
   let minors_now2 = minor_gcs () in
   assert (minors_before + 1 = minors_now2);
   (* Polled at alloc *)
-  [@@inline never]  
+  [@@inline never]
 
 let allocating_func_match minors_before =
   let minors_now = minor_gcs () in
@@ -222,7 +222,7 @@ and mut_rec_func_odd d =
   mut_rec_func_even (d-1)
 and mut_rec_func d =
   match d with
-  | n when n mod 2 == 0 
+  | n when n mod 2 == 0
     -> mut_rec_func_even n
   | n -> mut_rec_func_odd n
 
@@ -235,7 +235,7 @@ let polls_added_to_mutually_recursive_functions () =
     assert(minors_before < minors_after)
 
 (* this is to test that indirect tail calls (which might result in a self
-   call) have polls inserted in them. 
+   call) have polls inserted in them.
    These correspond to Itailcall_ind at Mach *)
 let do_indirect_tail_call f n =
   f (n-1)
@@ -263,9 +263,9 @@ let polls_not_added_to_indirect_calls () =
   ignore(do_indirect_call f 3);
   let minors_after = minor_gcs () in
     (* should be at one minor gc from the poll in do_indirect_tail_call *)
-    assert(minors_before = minors_after)    
+    assert(minors_before = minors_after)
 
-(* this set of functions tests that we don't poll for immediate 
+(* this set of functions tests that we don't poll for immediate
   (non-tail) calls. These correspond to Icall_imm at Mach *)
 let call_func1 n =
   Sys.opaque_identity(n-1)
@@ -282,7 +282,7 @@ let polls_not_added_to_immediate_calls () =
   let minors_after = minor_gcs () in
     (* should be no minor collections *)
     assert(minors_before = minors_after)
-  
+
 (* this set of functions tests whether polls are added before raises *)
 exception TestException
 
@@ -292,7 +292,7 @@ let func_that_raises () =
 let polls_added_before_raises () =
   let minors_before = minor_gcs () in
     request_minor_gc ();
-    try 
+    try
       func_that_raises ()
     with TestException ->
       let minors_after = minor_gcs () in
@@ -316,7 +316,7 @@ let () =
 
   ignore(Sys.opaque_identity(ref 41));
   polls_not_added_to_indirect_calls ();
-  
+
   ignore(Sys.opaque_identity(ref 41));
   polls_not_added_to_immediate_calls ();
 

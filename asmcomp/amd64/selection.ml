@@ -282,4 +282,5 @@ method! insert_op_debug env op dbg rs rd =
 
 end
 
-let fundecl ~future_funcnames f = (new selector)#emit_fundecl ~future_funcnames f
+let fundecl ~future_funcnames f = (new selector)#emit_fundecl
+  ~future_funcnames f

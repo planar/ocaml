@@ -67,7 +67,7 @@ let invert_integer_test = function
 
 let invert_poll_test = function
     Ipending -> Inotpending
-  | Inotpending -> Ipending 
+  | Inotpending -> Ipending
 
 let invert_test = function
     Itruetest -> Ifalsetest

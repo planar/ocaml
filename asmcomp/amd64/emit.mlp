@@ -804,7 +804,8 @@ let emit_instr fallthrough i =
 
       begin match system with
       | S_mingw64 | S_cygwin -> D.section [".rdata"] (Some "dr") []
-      | S_macosx | S_win64 -> () (* with LLVM/OS X and MASM, use the text segment *)
+      | S_macosx | S_win64 -> ()
+        (* with LLVM/OS X and MASM, use the text segment *)
       | _ -> D.section [".rodata"] None []
       end;
       D.align 4;
@@ -859,7 +860,7 @@ let emit_instr fallthrough i =
   | Lop(Ipollcall { check_young_limit; return_label }) ->
       if check_young_limit then
           I.cmp (domain_field Domainstate.Domain_young_limit) r15;
-      let gc_call_label = new_label () in  
+      let gc_call_label = new_label () in
       let label_after_gc = match return_label with
                   | None -> new_label()
                   | Some(lbl) -> lbl in
