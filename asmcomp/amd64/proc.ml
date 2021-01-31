@@ -315,6 +315,7 @@ let destroyed_at_oper = function
   | Iop(Istore(Single, _, _)) -> [| rxmm15 |]
   | Iop(Ialloc _) -> destroyed_at_alloc
   | Iop(Ipollcall _) -> destroyed_at_poll
+  | Iifthenelse(Ipolltest _, _, _) -> destroyed_at_poll
   | Iop(Iintop(Imulh | Icomp _) | Iintop_imm((Icomp _), _))
         -> [| rax |]
   | Iswitch(_, _) -> [| rax; rdx |]
