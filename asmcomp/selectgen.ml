@@ -666,6 +666,12 @@ method emit_expr (env:environment) exp =
       begin match self#emit_expr env arg with
         None -> None
       | Some r1 ->
+          (* poll is added here because if we add it later in the polling
+            Mach pass then we can come between this move and the raise,
+            which can end up destroying the loc_exn_bucket *)
+          self#insert env (Iop (Ipollcall
+            { check_young_limit = true; return_label = None }
+          )) [||] [||];
           let rd = [|Proc.loc_exn_bucket|] in
           self#insert env (Iop Imove) r1 rd;
           self#insert_debug env  (Iraise k) dbg rd [||];

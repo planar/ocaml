@@ -29,13 +29,6 @@ let add_fused_poll_before (f : Mach.instruction) : Mach.instruction =
     (Iifthenelse (Ipolltest Ipending, poll_instr, Mach.end_instr ()))
     [||] [||] f
 
-(* Add a poll instruction which checks the young limit itself before [f] *)
-let add_checked_poll_before check_young_limit (f : Mach.instruction)
-      : Mach.instruction =
-    Mach.instr_cons
-      (Iop (Ipollcall { check_young_limit; return_label = None }))
-      [||] [||] f
-
 (* Check a sequence of instructions from [f] and return whether
    they poll (via an alloc or raising an exception) *)
 let rec path_polls (f : Mach.instruction) : bool =
@@ -199,12 +192,9 @@ let instrument_body_with_polls (rec_handlers : int list) (i : Mach.instruction)
         if List.mem id current_handlers && List.mem id rec_handlers then
           add_fused_poll_before new_f
         else new_f
-    | Iend | Ireturn | Iop (Itailcall_ind) | Iop (Itailcall_imm _)
+    | Iend | Ireturn | Iop (Itailcall_ind) | Iop (Itailcall_imm _) | Iraise _
       ->
         f
-    | Iraise _ ->
-      add_checked_poll_before true
-        { f with next = instrument_with_handlers f.next }
     | Iop _ -> { f with next = instrument_with_handlers f.next }
   in
   instrument_body [] i

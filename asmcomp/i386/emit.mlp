@@ -643,6 +643,31 @@ let emit_instr fallthrough i =
         def_label label;
         I.lea (mem32 NONE 4 RAX) (reg i.res.(0))
       end
+  | Lop(Ipollcall { check_young_limit; return_label }) ->
+    if check_young_limit then
+      begin
+        load_domain_state ebx;
+        I.mov (domain_field Domain_young_ptr RBX) eax;
+        I.cmp (domain_field Domain_young_limit RBX) eax;
+      end;
+    let lbl_call_gc = new_label() in
+    let lbl_frame =
+      record_frame_label i.live (Dbg_alloc []) in
+    begin match check_young_limit with
+      | true -> I.jbe (label lbl_call_gc)
+      | false -> I.jmp (label lbl_call_gc)
+    end;
+    let lbl_after_alloc =
+      match return_label with
+      | None -> begin let tmp_lbl = new_label() in
+                  def_label tmp_lbl;
+                  tmp_lbl
+                end
+      | Some(lbl) -> lbl in
+    call_gc_sites :=
+      { gc_lbl = lbl_call_gc;
+        gc_return_lbl = lbl_after_alloc;
+        gc_frame = lbl_frame } :: !call_gc_sites
   | Lop(Iintop(Icomp cmp)) ->
       I.cmp (reg i.arg.(1)) (reg i.arg.(0));
       I.set (cond cmp) al;
@@ -837,6 +862,15 @@ let emit_instr fallthrough i =
       | Ieventest ->
           I.test (int 1) (reg i.arg.(0));
           I.je lbl
+      | Ipolltest(poll_test_type) ->
+        begin
+          load_domain_state ebx;
+          I.mov (domain_field Domain_young_ptr RBX) eax;
+          I.cmp (domain_field Domain_young_limit RBX) eax;
+          match poll_test_type with
+          | Ipending -> I.jbe lbl
+          | Inotpending -> I.jg lbl
+        end
       end
   | Lcondbranch3(lbl0, lbl1, lbl2) ->
       I.cmp (int 1) (reg i.arg.(0));

@@ -101,7 +101,7 @@ let word_addressed = false
 
 (* Calling conventions *)
 
-(* To supplement the processor's meagre supply of registers, we also
+(* To sup ement the processor's meagre supply of registers, we also
    use some global memory locations to pass arguments beyond the 6th.
    These globals are denoted by Incoming and Outgoing stack locations
    with negative offsets, starting at -64.
@@ -203,11 +203,12 @@ let destroyed_at_oper = function
     all_phys_regs
   | Iop(Iextcall { alloc = false; }) -> destroyed_at_c_call
   | Iop(Iintop(Idiv | Imod)) -> [| eax; edx |]
-  | Iop(Ialloc _) -> [| eax; ebx |]
+  | Iop(Ialloc _) | Iop(Ipollcall _) -> [| eax; ebx |]
   | Iop(Iintop Imulh) -> [| eax |]
   | Iop(Iintop(Icomp _) | Iintop_imm(Icomp _, _)) -> [| eax |]
   | Iop(Iintoffloat) -> [| eax |]
   | Iifthenelse(Ifloattest _, _, _) -> [| eax |]
+  | Iifthenelse(Ipolltest _, _, _) -> [| eax; ebx |]
   | Itrywith _ -> [| edx |]
   | _ -> [||]
 
@@ -222,7 +223,7 @@ let safe_register_pressure _op = 4
 let max_register_pressure = function
     Iextcall _ -> [| 4; max_int |]
   | Iintop(Idiv | Imod) -> [| 5; max_int |]
-  | Ialloc _ | Iintop(Icomp _) | Iintop_imm(Icomp _, _) |
+  | Ialloc _ | Ipollcall _ | Iintop(Icomp _) | Iintop_imm(Icomp _, _) |
     Iintoffloat -> [| 6; max_int |]
   | _ -> [|7; max_int |]
 
@@ -231,7 +232,7 @@ let max_register_pressure = function
 
 let op_is_pure = function
   | Icall_ind | Icall_imm _ | Itailcall_ind | Itailcall_imm _
-  | Iextcall _ | Istackoffset _ | Istore _ | Ialloc _
+  | Iextcall _ | Istackoffset _ | Istore _ | Ialloc _ | Ipollcall _
   | Iintop(Icheckbound) | Iintop_imm(Icheckbound, _) -> false
   | Ispecific(Ilea _) -> true
   | Ispecific _ -> false
