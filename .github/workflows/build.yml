@@ -36,9 +36,6 @@ jobs:
     - name: Install
       run: |
         bash -xe tools/ci/actions/runner.sh install
-    - name: Other checks
-      run: |
-        bash -xe tools/ci/actions/runner.sh other-checks
   full-flambda:
     runs-on: ubuntu-latest
     steps:
@@ -66,6 +63,3 @@ jobs:
     - name: Install
       run: |
         MAKE_ARG=-j OCAMLRUNPARAM=b,v=0 bash -xe tools/ci/actions/runner.sh install
-    - name: Other checks
-      run: |
-        MAKE_ARG=-j OCAMLRUNPARAM=b,v=0 bash -xe tools/ci/actions/runner.sh other-checks
