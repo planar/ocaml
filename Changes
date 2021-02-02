@@ -3,8 +3,16 @@ Working version
 
 ### Language features:
 
+<<<<<<< HEAD
 - #9331: Improve error messages for functor application and functor types.
   (Florian Angeletti and Gabriel Radanne, review by Leo White)
+=======
+- #10039: Safepoints
+  Add poll points to native generated code. These are effectively
+  zero-sized allocations and fix some signal and remembered set
+  issues. Also multicore prerequisite.
+  (Sadiq Jaffer, Anmol Sahoo, Stephen Dolan, reviewed by ??)
+>>>>>>> 3002287fb0... changes
 
 - #10013: Let-punning
   Allow 'let* x in ...' and 'let%ext x in ...' as shorthand for
