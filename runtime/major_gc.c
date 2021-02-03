@@ -287,27 +287,13 @@ Caml_inline value* mark_slice_darken(value *gray_vals_ptr,
 #endif
     if (Is_white_hd (chd)){
       ephe_list_pure = 0;
-<<<<<<< HEAD
       Hd_val (child) = Grayhd_hd (chd);
+      marked_words += Whsize_hd (chd);
       *gray_vals_ptr++ = child;
       if (gray_vals_ptr >= gray_vals_end) {
         gray_vals_cur = gray_vals_ptr;
         realloc_gray_vals ();
         gray_vals_ptr = gray_vals_cur;
-||||||| parent of 40a14c1983... add instrumentation for compaction heuristic
-      Hd_val (child) = Blackhd_hd (chd);
-      if( Tag_hd(chd) < No_scan_tag ) {
-        mark_stack_push(stk, child, 0, work);
-      } else {
-        *work -= 1; /* Account for header */
-=======
-      Hd_val (child) = Blackhd_hd (chd);
-      marked_words += Whsize_hd (chd);
-      if( Tag_hd(chd) < No_scan_tag ) {
-        mark_stack_push(stk, child, 0, work);
-      } else {
-        *work -= 1; /* Account for header */
->>>>>>> 40a14c1983... add instrumentation for compaction heuristic
       }
     }
   }
@@ -810,6 +796,8 @@ void caml_major_collection_slice (intnat howmuch)
   }
 
   if (caml_gc_phase == Phase_idle){
+    double previous_overhead; // overhead at the end of the previous cycle
+
     CAML_EV_BEGIN(EV_MAJOR_CHECK_AND_COMPACT);
     caml_gc_message (0x200, "marked words = %"
                      ARCH_INTNAT_PRINTF_FORMAT "u words\n",
@@ -818,13 +806,15 @@ void caml_major_collection_slice (intnat howmuch)
                      ARCH_INTNAT_PRINTF_FORMAT "u words\n",
                      heap_wsz_at_cycle_start);
     if (marked_words == 0){
-      caml_gc_message (0x200, "actual overhead at start of cycle = +inf\n");
+      previous_overhead = 1000000.;
+      caml_gc_message (0x200, "overhead at start of cycle = +inf\n");
     }else{
-      caml_gc_message (0x200, "actual overhead at start of cycle = %.0f%%\n",
-                       100.0 * (heap_wsz_at_cycle_start - marked_words)
-                       / marked_words);
+      previous_overhead =
+        100.0 * (heap_wsz_at_cycle_start - marked_words) / marked_words;
+      caml_gc_message (0x200, "overhead at start of cycle = %.0f%%\n",
+                       previous_overhead);
     }
-    caml_compact_heap_maybe ();
+    caml_compact_heap_maybe (previous_overhead);
     CAML_EV_END(EV_MAJOR_CHECK_AND_COMPACT);
   }
 
