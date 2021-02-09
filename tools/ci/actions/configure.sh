@@ -24,6 +24,24 @@ set -e
 
 # XXX The configure test _should_ test commit by commit for bisect-safety
 
+# Test to see if any part of the directory name has been marked prune
+not_pruned () {
+  DIR=$(dirname "$1")
+  if [[ $DIR = '.' ]] ; then
+    return 0
+  else
+    case ",$(git check-attr typo.prune "$DIR" | sed -e 's/.*: //')," in
+      ,set,)
+      return 1
+      ;;
+      *)
+
+      not_pruned "$DIR"
+      return $?
+    esac
+  fi
+}
+
 CheckTypoTree () {
   export OCAML_CT_HEAD=$1
   export OCAML_CT_LS_FILES="git diff-tree --no-commit-id --name-only -r $2 --"
