@@ -29,26 +29,7 @@
 
 set -e
 
-UPSTREAM_BRANCH="$1"
-UPSTREAM_HEAD="$2"
-PR_BRANCH="$3"
-PR_HEAD="$4"
-
-# Ensure that we have all the commits
-echo "Determining merge-base of $UPSTREAM_HEAD..$PR_HEAD for $PR_BRANCH"
-
-DEEPEN=50
-MSG='Deepening'
-while ! git merge-base "$UPSTREAM_HEAD" "$PR_HEAD" &> /dev/null
-do
-  echo " - $MSG by $DEEPEN commits"
-  git fetch origin --deepen=$DEEPEN "$PR_BRANCH" &> /dev/null
-  MSG='Further deepening'
-  ((DEEPEN*=2))
-done
-MERGE_BASE=$(git merge-base "$UPSTREAM_HEAD" "$PR_HEAD")
-
-echo "$PR_BRANCH branched from $UPSTREAM_BRANCH at: $MERGE_BASE"
+. tools/ci/actions/deepen-fetch.sh
 
 MSG='Check Changes has been updated'
 COMMIT_RANGE="$MERGE_BASE..$PR_HEAD"

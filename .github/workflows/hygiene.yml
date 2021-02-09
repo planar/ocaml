@@ -1,13 +1,14 @@
 name: Hygiene
 on:
+  push:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
-  build:
+  changes:
     name: Changes updated
     runs-on: ubuntu-latest
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-change-entry-needed') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-change-entry-needed') && github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v2
         with:
@@ -18,3 +19,29 @@ jobs:
           "${{ github.event.pull_request.base.sha }}"
           "${{ github.event.pull_request.head.ref }}"
           "${{ github.event.pull_request.head.sha }}"
+
+  configure:
+    name: configure correctly generated
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo $GITHUB_CONTEXT
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 50
+      - run: >-
+          tools/ci/actions/configure.sh
+          "${{ github.event.pull_request.base.ref }}"
+          "${{ github.event.pull_request.base.sha }}"
+          "${{ github.event.pull_request.head.ref }}"
+          "${{ github.event.pull_request.head.sha }}"
+        if: ${{ github.event_name == 'pull_request' }}
+      - run: >-
+          tools/ci/actions/configure.sh
+          "${{ github.event.ref }}"
+          "${{ github.event.before }}"
+          "${{ github.event.ref }}"
+          "${{ github.event.after }}"
+        if: ${{ github.event_name == 'push' }}
