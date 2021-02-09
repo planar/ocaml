@@ -24,16 +24,14 @@ PR_HEAD="$4"
 # Special case: new tags and new branches will have UPSTREAM_HEAD=0
 
 if [[ $UPSTREAM_HEAD -eq 0 ]]; then
-  UPSTREAM_HEAD="$PR_HEAD"
+  UPSTREAM_HEAD="$PR_HEAD~1"
+elif ! git log -1 "$UPSTREAM_HEAD" &> /dev/null ; then
+  echo "$UPSTREAM_BRANCH has been force-pushed"
+  git fetch origin "$UPSTREAM_HEAD"
 fi
 
 # If we've been sourced, return if the fetch has already been done
 if ! git merge-base "$UPSTREAM_HEAD" "$PR_HEAD" &> /dev/null; then
-  if ! git log -1 "$UPSTREAM_HEAD" &> /dev/null ; then
-    echo "$UPSTREAM_BRANCH has been force-pushed"
-    git fetch origin "$UPSTREAM_HEAD"
-  fi
-
   echo "Determining merge-base of $UPSTREAM_HEAD..$PR_HEAD for $PR_BRANCH"
 
   DEEPEN=50
