@@ -21,6 +21,12 @@ PR_HEAD="$4"
 # Ensure that enough has been fetched to have all the commits between the
 # the two branches.
 
+# Special case: new tags and new branches will have UPSTREAM_HEAD=0
+
+if [[ $UPSTREAM_HEAD -eq 0 ]]; then
+  UPSTREAM_HEAD="$PR_HEAD"
+fi
+
 # If we've been sourced, return if the fetch has already been done
 if ! git merge-base "$UPSTREAM_HEAD" "$PR_HEAD" &> /dev/null; then
   if ! git log -1 "$UPSTREAM_HEAD" &> /dev/null ; then
