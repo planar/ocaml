@@ -22,25 +22,26 @@ PR_HEAD="$4"
 # the two branches.
 
 # If we've been sourced, return if the fetch has already been done
-git merge-base "$UPSTREAM_HEAD" "$PR_HEAD" &> /dev/null && return
+if ! git merge-base "$UPSTREAM_HEAD" "$PR_HEAD" &> /dev/null; then
+  if ! git log -1 "$UPSTREAM_HEAD" &> /dev/null ; then
+    echo "$UPSTREAM_BRANCH has been force-pushed"
+    git fetch origin "$UPSTREAM_HEAD"
+  fi
 
-if ! git log -1 "$UPSTREAM_HEAD" &> /dev/null ; then
-  echo "$UPSTREAM_BRANCH has been force-pushed"
-  git fetch origin "$UPSTREAM_HEAD"
+  echo "Determining merge-base of $UPSTREAM_HEAD..$PR_HEAD for $PR_BRANCH"
+
+  DEEPEN=50
+  MSG='Deepening'
+
+  while ! git merge-base "$UPSTREAM_HEAD" "$PR_HEAD" &> /dev/null
+  do
+    echo " - $MSG by $DEEPEN commits"
+    git fetch origin --deepen=$DEEPEN "$PR_BRANCH" &> /dev/null
+    MSG='Further deepening'
+    ((DEEPEN*=2))
+  done
 fi
 
-echo "Determining merge-base of $UPSTREAM_HEAD..$PR_HEAD for $PR_BRANCH"
-
-DEEPEN=50
-MSG='Deepening'
-
-while ! git merge-base "$UPSTREAM_HEAD" "$PR_HEAD" &> /dev/null
-do
-  echo " - $MSG by $DEEPEN commits"
-  git fetch origin --deepen=$DEEPEN "$PR_BRANCH" &> /dev/null
-  MSG='Further deepening'
-  ((DEEPEN*=2))
-done
 MERGE_BASE=$(git merge-base "$UPSTREAM_HEAD" "$PR_HEAD")
 
 echo "$PR_BRANCH branched from $UPSTREAM_BRANCH at: $MERGE_BASE"
