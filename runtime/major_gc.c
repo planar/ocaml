@@ -288,7 +288,6 @@ Caml_inline value* mark_slice_darken(value *gray_vals_ptr,
     if (Is_white_hd (chd)){
       ephe_list_pure = 0;
       Hd_val (child) = Grayhd_hd (chd);
-      marked_words += Whsize_hd (chd);
       *gray_vals_ptr++ = child;
       if (gray_vals_ptr >= gray_vals_end) {
         gray_vals_cur = gray_vals_ptr;
@@ -398,6 +397,7 @@ static void mark_slice (intnat work)
   gray_vals_ptr = gray_vals_cur;
   v = current_value;
   start = current_index;
+  marked_words += work;
   while (work > 0){
     if (v == 0 && gray_vals_ptr > gray_vals){
       CAMLassert (start == 0);
@@ -424,6 +424,7 @@ static void mark_slice (intnat work)
                                             &slice_pointers);
         }
         if (end < size){
+          marked_words -= work;
           work = 0;
           start = end;
           /* [v] doesn't change. */
@@ -467,8 +468,10 @@ static void mark_slice (intnat work)
     } else if (caml_gc_subphase == Subphase_mark_roots) {
       CAML_EV_BEGIN(EV_MAJOR_MARK_ROOTS);
       gray_vals_cur = gray_vals_ptr;
+      marked_words -= work;
       work = caml_darken_all_roots_slice (work);
       gray_vals_ptr = gray_vals_cur;
+      marked_words += work;
       CAML_EV_END(EV_MAJOR_MARK_ROOTS);
       if (work > 0){
         caml_gc_subphase = Subphase_mark_main;
@@ -513,6 +516,7 @@ static void mark_slice (intnat work)
           /* Initialise the sweep phase. */
           init_sweep_phase();
         }
+        marked_words -= work;
         work = 0;
         CAML_EV_END(EV_MAJOR_MARK_FINAL);
       }
@@ -524,6 +528,7 @@ static void mark_slice (intnat work)
   gray_vals_cur = gray_vals_ptr;
   current_value = v;
   current_index = start;
+  marked_words -= work;  /* work may be negative */
   CAML_EV_COUNTER(EV_C_MAJOR_MARK_SLICE_FIELDS, slice_fields);
   CAML_EV_COUNTER(EV_C_MAJOR_MARK_SLICE_POINTERS, slice_pointers);
 }
