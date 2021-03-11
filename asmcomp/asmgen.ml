@@ -154,7 +154,7 @@ let compile_fundecl ~ppf_dump ~funcnames fd_cmm =
   ++ save_linear
   ++ emit_fundecl
 
-module StringSet = Set.Make (String)
+module String = Misc.Stdlib.String
 
 let compile_data dl =
   dl
