@@ -140,8 +140,8 @@ let compile_fundecl ~ppf_dump ~funcnames fd_cmm =
           (Polling.instrument_fundecl ~future_funcnames:funcnames)
   ++ pass_dump_if ppf_dump dump_live "Liveness analysis"
   ++ Profile.record ~accumulate:true "spill" Spill.fundecl
-  ++ pass_dump_if ppf_dump dump_spill "After spilling"
   ++ Profile.record ~accumulate:true "liveness" liveness
+  ++ pass_dump_if ppf_dump dump_spill "After spilling"
   ++ Profile.record ~accumulate:true "split" Split.fundecl
   ++ pass_dump_if ppf_dump dump_split "After live range splitting"
   ++ Profile.record ~accumulate:true "liveness" liveness
