@@ -141,7 +141,7 @@ class virtual selector_generic : object
 
   (* The following method is the entry point and should not be overridden
      (except by [Spacetime_profiling]). *)
-  method emit_fundecl : future_funcnames:Set.Make(String).t
+  method emit_fundecl : future_funcnames:Misc.Stdlib.String.Set.t
                                               -> Cmm.fundecl -> Mach.fundecl
 
   (* The following methods should not be overridden.  They cannot be

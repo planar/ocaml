@@ -14,7 +14,7 @@
 
 open Mach
 
-module StringSet = Set.Make (String)
+module String = Misc.Stdlib.String
 
 (* Add a poll test and polling instruction before [f]. In the later
   linearisation pass this will simplify in to a conditional and backwards
