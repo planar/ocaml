@@ -955,13 +955,14 @@ let emit_instr i =
         | Ipolltest test_direction ->
             let offset = Domainstate.(idx_of_field Domain_young_limit) * 8 in
             `	ldr	{emit_reg reg_tmp1}, [{emit_reg reg_domain_state_ptr}, #{emit_int offset}]\n`;
+            `	cmp	{emit_reg reg_alloc_ptr}, {emit_reg reg_tmp1}\n`;
             begin match test_direction with
               | Ipending ->
-                `	cmp	{emit_reg reg_alloc_ptr}, {emit_reg reg_tmp1}\n`;
+                `	b.ls {emit_label lbl}\n`
               | Inotpending ->
-                `	cmp	{emit_reg reg_tmp1}, {emit_reg reg_alloc_ptr}\n`;
+                `	b.hs {emit_label lbl}\n`
             end;
-            `	b.ls {emit_label lbl}\n`
+
         | Ifloattest cmp ->
             let comp =
               match cmp with
