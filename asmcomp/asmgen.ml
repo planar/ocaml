@@ -165,8 +165,8 @@ let compile_phrases ~ppf_dump ps =
   let funcnames =
     List.fold_left (fun s p ->
       match p with
-      | Cfunction fd -> StringSet.add fd.fun_name s
-      | Cdata _ -> s) StringSet.empty ps in
+      | Cfunction fd -> String.Set.add fd.fun_name s
+      | Cdata _ -> s) String.Set.empty ps in
   let rec compile ~funcnames ps =
     match ps with
     | [] -> ()
@@ -176,7 +176,7 @@ let compile_phrases ~ppf_dump ps =
        | Cfunction fd ->
           compile_fundecl ~ppf_dump ~funcnames fd;
           compile
-            ~funcnames:(StringSet.remove fd.fun_name funcnames) ps
+            ~funcnames:(String.Set.remove fd.fun_name funcnames) ps
        | Cdata dl ->
           compile_data dl;
           compile ~funcnames ps
