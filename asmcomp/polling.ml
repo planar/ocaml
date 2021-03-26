@@ -37,12 +37,12 @@ let join a1 a2 =
   | (Exit _ as a), Alloc | Alloc, (Exit _ as a) -> a
   | Alloc, Alloc -> Alloc
 
-(* Check a sequence of instructions from [f] and return
+(* Check a sequence of instructions from [i] and return
    an approximation of its behavior *)
-let rec path_approx ~fwd_funcs f =
-  match f.desc with
-  | Iifthenelse (_, i0, i1) -> branch_approx ~fwd_funcs [| i0; i1 |] f.next
-  | Iswitch (_, acts) -> branch_approx ~fwd_funcs acts f.next
+let rec path_approx ~fwd_funcs i =
+  match i.desc with
+  | Iifthenelse (_, i0, i1) -> branch_approx ~fwd_funcs [| i0; i1 |] i.next
+  | Iswitch (_, acts) -> branch_approx ~fwd_funcs acts i.next
   | Icatch (_, handlers, body) ->
     begin match path_approx ~fwd_funcs body with
     | PRTC -> PRTC
@@ -54,11 +54,11 @@ let rec path_approx ~fwd_funcs f =
         | PRTC -> PRTC
         | Return -> Return
         | Exit s1 ->
-          let remove s (i, _) = IntSet.remove i s in
+          let remove s (n, _) = IntSet.remove n s in
           Exit (List.fold_left remove s1 handlers)
         | Alloc -> assert false
       in
-      seq_approx ~fwd_funcs a2 f.next
+      seq_approx ~fwd_funcs a2 i.next
     | Alloc -> Alloc
     end
   | Itrywith (body, _handler) ->
@@ -66,19 +66,19 @@ let rec path_approx ~fwd_funcs f =
          seq_approx ~fwd_funcs
                     (join (path_approx ~fwd_funcs body)
                           (path_approx ~fwd_funcs handler))
-                    f.next
+                    i.next
        but we insert a poll at every raise, so we can ignore the handler
        as if it allocated immediately *)
-      seq_approx ~fwd_funcs (path_approx ~fwd_funcs body) f.next
+      seq_approx ~fwd_funcs (path_approx ~fwd_funcs body) i.next
   | Ireturn -> Return
   | Iop (Itailcall_ind) -> PRTC
   | Iop (Itailcall_imm {func; _}) ->
     if String.Set.mem func fwd_funcs then PRTC else Return
   | Iend -> Exit (IntSet.singleton 0)
-  | Iexit i -> Exit (IntSet.singleton i)
+  | Iexit n -> Exit (IntSet.singleton n)
   | Iraise _ -> Alloc (* Iraise included here because it has a poll inserted *)
   | Iop (Ialloc _ | Ipoll _) -> Alloc
-  | Iop _ -> path_approx ~fwd_funcs f.next
+  | Iop _ -> path_approx ~fwd_funcs i.next
 
 and branch_approx ~fwd_funcs branches next =
   assert (branches <> [| |]);
@@ -94,13 +94,14 @@ and seq_approx ~fwd_funcs a next =
   | PRTC -> PRTC
   | Return -> join Return (path_approx ~fwd_funcs next)
 
-let path_polls f =
-  match path_approx ~fwd_funcs:String.Set.empty f with
+let path_polls i =
+  match path_approx ~fwd_funcs:String.Set.empty i with
   | Alloc -> true
+  | Exit s when IntSet.is_empty s -> true
   | _ -> false
 
-let requires_prologue_poll ~future_funcnames f =
-  match path_approx ~fwd_funcs:future_funcnames f with
+let requires_prologue_poll ~future_funcnames i =
+  match path_approx ~fwd_funcs:future_funcnames i with
   | PRTC -> true
   | _ -> false
 
@@ -109,124 +110,53 @@ let requires_prologue_poll ~future_funcnames f =
 let polls_unconditionally (i : Mach.instruction) =
   path_polls i
 
-(* returns a list of ids for the handlers of recursive catches from
-   Mach instruction [f]. These are used to later add polls before
-   exits to them. *)
-let rec find_rec_handlers ~future_funcnames (f : Mach.instruction) =
-  match f.desc with
-  | Iifthenelse (_, ifso, ifnot) ->
-      let ifso_rec_handlers = find_rec_handlers ~future_funcnames ifso in
-      let ifnot_rec_handlers = find_rec_handlers ~future_funcnames ifnot in
-      let next_rec_handlers = find_rec_handlers ~future_funcnames f.next in
-      ifso_rec_handlers @ ifnot_rec_handlers @ next_rec_handlers
-  | Iswitch (_, cases) ->
-      let case_rec_handlers =
-        Array.fold_left
-          (fun agg_rec_handlers case ->
-            agg_rec_handlers @ find_rec_handlers ~future_funcnames case)
-          [] cases
-      in
-      case_rec_handlers @ find_rec_handlers ~future_funcnames f.next
-  | Icatch (rec_flag, handlers, body) -> (
-      match rec_flag with
-      | Recursive ->
-          let rec_handlers =
-            List.map
-              (fun (id, handler) ->
-                let inner_rec_handlers = find_rec_handlers ~future_funcnames
-                  handler in
-                let current_rec_handlers =
-                  if not (polls_unconditionally handler) then [ id ] else []
-                in
-                inner_rec_handlers @ current_rec_handlers)
-              handlers
-            |> List.flatten
-          in
-          let body_rec_handlers = find_rec_handlers ~future_funcnames body in
-          body_rec_handlers @ rec_handlers @ find_rec_handlers
-            ~future_funcnames f.next
-      | Nonrecursive ->
-          let non_rec_catch_handlers =
-            List.fold_left
-              (fun tmp_rec_handlers (_, handler) ->
-                tmp_rec_handlers @ find_rec_handlers ~future_funcnames handler)
-              [] handlers
-          in
-          let body_rec_handlers = find_rec_handlers ~future_funcnames body in
-          body_rec_handlers @ non_rec_catch_handlers @ find_rec_handlers
-            ~future_funcnames f.next
-      )
-  | Itrywith (body, handler) ->
-      let handler_rec_handler = find_rec_handlers ~future_funcnames handler in
-      let body_rec_handlers = find_rec_handlers ~future_funcnames body in
-      body_rec_handlers @ handler_rec_handler @ find_rec_handlers
-        ~future_funcnames f.next
-  | Iexit _ | Iend | Ireturn
-  | Iop (Itailcall_ind)
-  | Iop (Itailcall_imm _)
-  | Iraise _ ->
-      []
-  | Iop _ -> find_rec_handlers ~future_funcnames f.next
+(* Given the handlers in scope without intervening allocation,
+   add polls before unguarded backwards edges,
+   starting from Mach instruction [i] *)
+let rec instr_body handlers i =
+  let instr i = instr_body handlers i in
+  match i.desc with
+  | Iop (Ialloc _ | Ipoll _) ->
+    { i with next = instr_body IntSet.empty i.next }
+  | Iifthenelse (test, i0, i1) ->
+    { i with
+      desc = Iifthenelse (test, instr i0, instr i1);
+      next = instr i.next;
+    }
+  | Iswitch (index, cases) ->
+    { i with
+      desc = Iswitch (index, Array.map instr cases);
+      next = instr i.next;
+    }
+  | Icatch (Nonrecursive, hdl, body) ->
+    { i with
+      desc = Icatch (Nonrecursive,
+                     List.map (fun (n, i0) -> (n, instr i0)) hdl,
+                     instr body);
+      next = instr i.next;
+    }
+  | Icatch (Recursive, hdl, body) ->
+    let f s (n, i0) = if polls_unconditionally i0 then s else IntSet.add n s in
+    let new_handlers = List.fold_left f handlers hdl in
+    let instr_handler (n, i0) = (n, instr_body new_handlers i0) in
+    { i with
+      desc = Icatch (Recursive, List.map instr_handler hdl, instr body);
+      next = instr i.next;
+    }
+  | Itrywith (body, hdl) ->
+    { i with
+      desc = Itrywith (instr body, instr_body IntSet.empty hdl);
+      next = instr i.next;
+    }
+  | Iexit n ->
+    if IntSet.mem n handlers then
+      Mach.instr_cons (Iop (Ipoll { return_label = None })) [||] [||] i
+    else
+      i
+  | Iend | Ireturn | Iraise _ -> i
+  | Iop _ -> { i with next = instr i.next }
 
-(* given the list of handler ids [rec_handlers] for recursive catches, add polls
-   before backwards edges starting from Mach instruction [i] *)
-let instrument_body_with_polls (rec_handlers : int list) (i : Mach.instruction)
-    =
-  (* the [current_handlers] list allows for an optimisation which avoids
-    putting a poll before the first jump in to a loop *)
-  let rec instrument_body (current_handlers : int list) (f : Mach.instruction) =
-    let instrument_with_handlers i = instrument_body current_handlers i in
-    match f.desc with
-    | Iifthenelse (test, i0, i1) ->
-        {
-          f with
-          desc = Iifthenelse (
-            test, instrument_with_handlers i0, instrument_with_handlers i1
-          );
-          next = instrument_with_handlers f.next;
-        }
-    | Iswitch (index, cases) ->
-        {
-          f with
-          desc = Iswitch (index, Array.map instrument_with_handlers cases);
-          next = instrument_with_handlers f.next;
-        }
-    | Icatch (rec_flag, handlers, body) ->
-        {
-          f with
-          desc =
-            Icatch
-              ( rec_flag,
-                List.map
-                  (fun (idx, instrs) ->
-                    (idx, instrument_body (idx :: current_handlers) instrs))
-                  handlers,
-                instrument_with_handlers body );
-          next = instrument_with_handlers f.next;
-        }
-    | Itrywith (body, handler) ->
-        {
-          f with
-          desc = Itrywith (
-            instrument_with_handlers body, instrument_with_handlers handler
-          );
-          next = instrument_with_handlers f.next;
-        }
-    | Iexit id ->
-        let new_f = { f with next = instrument_with_handlers f.next } in
-        if List.mem id current_handlers && List.mem id rec_handlers then
-          Mach.instr_cons
-            (Iop (Ipoll { return_label = None }))
-            [||] [||] new_f
-        else new_f
-    | Iend | Ireturn | Iop (Itailcall_ind) | Iop (Itailcall_imm _) | Iraise _
-      ->
-        f
-    | Iop _ -> { f with next = instrument_with_handlers f.next }
-  in
-  instrument_body [] i
+let instrument_body_with_polls i = instr_body IntSet.empty i
 
-let instrument_fundecl ~future_funcnames (i : Mach.fundecl) : Mach.fundecl =
-  let f = i.fun_body in
-  let rec_handlers = find_rec_handlers ~future_funcnames f in
-  { i with fun_body = instrument_body_with_polls rec_handlers f }
+let instrument_fundecl ~future_funcnames:_ (f : Mach.fundecl) : Mach.fundecl =
+  { f with fun_body = instrument_body_with_polls f.fun_body }
