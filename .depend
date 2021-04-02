@@ -2723,12 +2723,15 @@ asmcomp/mach.cmi : \
     asmcomp/cmm.cmi \
     asmcomp/arch.cmo
 asmcomp/polling.cmo : \
+    utils/misc.cmi \
     asmcomp/mach.cmi \
     asmcomp/polling.cmi
 asmcomp/polling.cmx : \
+    utils/misc.cmx \
     asmcomp/mach.cmx \
     asmcomp/polling.cmi
 asmcomp/polling.cmi : \
+    utils/misc.cmi \
     asmcomp/mach.cmi
 asmcomp/printcmm.cmo : \
     utils/targetint.cmi \
@@ -2919,6 +2922,7 @@ asmcomp/selectgen.cmx : \
     asmcomp/selectgen.cmi
 asmcomp/selectgen.cmi : \
     asmcomp/reg.cmi \
+    utils/misc.cmi \
     asmcomp/mach.cmi \
     lambda/debuginfo.cmi \
     asmcomp/cmm.cmi \
@@ -2942,6 +2946,7 @@ asmcomp/selection.cmx : \
     asmcomp/arch.cmx \
     asmcomp/selection.cmi
 asmcomp/selection.cmi : \
+    utils/misc.cmi \
     asmcomp/mach.cmi \
     asmcomp/cmm.cmi
 asmcomp/spill.cmo : \
