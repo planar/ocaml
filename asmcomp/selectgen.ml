@@ -416,7 +416,7 @@ method mark_instr = function
   | Iop (Itailcall_ind | Itailcall_imm _) ->
       self#mark_tailcall
   | Iop (Ialloc _) | Iop (Ipollcall _) ->
-      self#mark_call (* caml_alloc*, caml_poll, caml_garbage_collection *)
+      self#mark_call (* caml_alloc*, caml_garbage_collection (incl. polls) *)
   | Iop (Iintop (Icheckbound) | Iintop_imm(Icheckbound, _)) ->
       self#mark_c_tailcall (* caml_ml_array_bound_error *)
   | Iraise raise_kind ->
