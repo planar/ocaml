@@ -608,6 +608,8 @@ let emit_instr fallthrough i =
             I.fstp (addressing addr REAL8 i 1)
           end
       end
+  | Lop(Ipollcall _) ->
+    ()
   | Lop(Ialloc { bytes = n; dbginfo }) ->
       if !fastcode_flag then begin
         load_domain_state ebx;
