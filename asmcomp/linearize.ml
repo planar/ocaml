@@ -142,14 +142,19 @@ let linear i n contains_calls =
     | Iop(Imove | Ireload | Ispill)
       when i.Mach.arg.(0).loc = i.Mach.res.(0).loc ->
         linear i.Mach.next n
-    | Iop(Ipollcall ({return_label = Some(lbl)}) as op) ->
-      let next_i = begin match i.Mach.next.desc with
-      | Iexit exit_lbl when exit_lbl = lbl ->
-        i.Mach.next.next
-      | _ ->
-        i.Mach.next
-      end in
-        copy_instr (Lop op) i (linear next_i n)
+    | Iop((Ipollcall { return_label = None; _ }) as op) ->
+        (* If the poll call does not already specify where to jump to after
+           the poll (the expected situation in the current implementation),
+           absorb any branch after the poll call into the poll call itself.
+           This, in particular, optimises polls at the back edges of loops. *)
+        let n = linear i.Mach.next n in
+        let op, n =
+          match n.desc with
+          | Lbranch lbl ->
+            Mach.Ipollcall { return_label = Some lbl }, n.next
+          | _ -> op, n
+        in
+        copy_instr (Lop op) i n
     | Iop op ->
         copy_instr (Lop op) i (linear i.Mach.next n)
     | Ireturn ->
@@ -159,45 +164,32 @@ let linear i n contains_calls =
         else n1
     | Iifthenelse(test, ifso, ifnot) ->
         let n1 = linear i.Mach.next n in
-        begin match (test, ifso.Mach.desc, ifnot.Mach.desc, n1.desc) with
-          _, Iend, _, Lbranch lbl ->
+        begin match (ifso.Mach.desc, ifnot.Mach.desc, n1.desc) with
+          Iend, _, Lbranch lbl ->
             copy_instr (Lcondbranch(test, lbl)) i (linear ifnot n1)
-        | _, _, Iend, Lbranch lbl ->
-            begin match (test, ifso.Mach.desc, ifnot.Mach.desc) with
-            | Ipolltest _, Iop(Ipollcall pc), Iend ->
-              (* This deals with polls at the back edge of loops. It replaces
-                  the Ipollcall with one that includes the label of the loop
-                  head and later in emit, we jump directly to the loop head
-                  from the epilogue. This means we can drop the jump following
-                  the pollcall. *)
-              copy_instr (Lcondbranch(invert_test test, lbl)) i (linear {
-                ifso with desc = Mach.Iop(Ipollcall {
-                    pc with return_label = Some(lbl)})
-                } n)
-            | _ ->
-              copy_instr (Lcondbranch(invert_test test, lbl)) i (linear ifso n1)
-            end
-        | _, Iexit nfail1, Iexit nfail2, _
+        | _, Iend, Lbranch lbl ->
+            copy_instr (Lcondbranch(invert_test test, lbl)) i (linear ifso n1)
+        | Iexit nfail1, Iexit nfail2, _
               when is_next_catch nfail1 && local_exit nfail2 ->
             let lbl2 = find_exit_label nfail2 in
             copy_instr
               (Lcondbranch (invert_test test, lbl2)) i (linear ifso n1)
-        | _, Iexit nfail, _, _ when local_exit nfail ->
+        | Iexit nfail, _, _ when local_exit nfail ->
             let n2 = linear ifnot n1
             and lbl = find_exit_label nfail in
             copy_instr (Lcondbranch(test, lbl)) i n2
-        | _, _,  Iexit nfail, _ when local_exit nfail ->
+        | _,  Iexit nfail, _ when local_exit nfail ->
             let n2 = linear ifso n1 in
             let lbl = find_exit_label nfail in
             copy_instr (Lcondbranch(invert_test test, lbl)) i n2
-        | _, Iend, _, _ ->
+        | Iend, _, _ ->
             let (lbl_end, n2) = get_label n1 in
             copy_instr (Lcondbranch(test, lbl_end)) i (linear ifnot n2)
-        | _, _,  Iend, _ ->
+        | _,  Iend, _ ->
             let (lbl_end, n2) = get_label n1 in
             copy_instr (Lcondbranch(invert_test test, lbl_end)) i
                        (linear ifso n2)
-        | _, _, _, _ ->
+        | _, _, _ ->
           (* Should attempt branch prediction here *)
             let (lbl_end, n2) = get_label n1 in
             let (lbl_else, nelse) = get_label (linear ifnot n2) in

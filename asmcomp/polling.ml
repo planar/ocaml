@@ -16,19 +16,6 @@ open Mach
 
 module String = Misc.Stdlib.String
 
-(* Add a poll test and polling instruction before [f]. In the later
-  linearisation pass this will simplify in to a conditional and backwards
-  jump pair *)
-let add_fused_poll_before (f : Mach.instruction) : Mach.instruction =
-  let poll_instr =
-    Mach.instr_cons
-      (Iop (Ipollcall { check_young_limit = false; return_label = None }))
-      [||] [||] (Mach.end_instr ())
-  in
-  Mach.instr_cons
-    (Iifthenelse (Ipolltest Ipending, poll_instr, Mach.end_instr ()))
-    [||] [||] f
-
 (* Check a sequence of instructions from [f] and return whether
    they poll (via an alloc or raising an exception) *)
 let rec path_polls (f : Mach.instruction) : bool =
@@ -193,7 +180,9 @@ let instrument_body_with_polls (rec_handlers : int list) (i : Mach.instruction)
     | Iexit id ->
         let new_f = { f with next = instrument_with_handlers f.next } in
         if List.mem id current_handlers && List.mem id rec_handlers then
-          add_fused_poll_before new_f
+          Mach.instr_cons
+            (Iop (Ipollcall { return_label = None }))
+            [||] [||] new_f
         else new_f
     | Iend | Ireturn | Iop (Itailcall_ind) | Iop (Itailcall_imm _) | Iraise _
       ->

@@ -670,9 +670,7 @@ method emit_expr (env:environment) exp =
           (* poll is added here because if we add it later in the polling
             Mach pass then we can come between this move and the raise,
             which can end up destroying the loc_exn_bucket *)
-          self#insert env (Iop (Ipollcall
-            { check_young_limit = true; return_label = None }
-          )) [||] [||];
+          self#insert env (Iop (Ipollcall { return_label = None })) [||] [||];
           let rd = [|Proc.loc_exn_bucket|] in
           self#insert env (Iop Imove) r1 rd;
           self#insert_debug env  (Iraise k) dbg rd [||];
@@ -1185,9 +1183,7 @@ method emit_fundecl ~future_funcnames f =
   self#insert_moves env loc_arg rarg;
   let polled_body =
     if Polling.requires_prologue_poll ~future_funcnames body then
-      instr_cons (Iop(Ipollcall {
-          check_young_limit = true; return_label = None
-        })) [||] [||] body
+      instr_cons (Iop(Ipollcall { return_label = None })) [||] [||] body
     else
       body
     in

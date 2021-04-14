@@ -35,7 +35,6 @@ type test =
   | Ifalsetest
   | Iinttest of integer_comparison
   | Iinttest_imm of integer_comparison * int
-  | Ipolltest of poll_test_direction
   | Ifloattest of float_comparison
   | Ioddtest
   | Ieventest
@@ -64,7 +63,7 @@ type operation =
   | Ifloatofint | Iintoffloat
   | Iopaque
   | Ispecific of Arch.specific_operation
-  | Ipollcall of { check_young_limit: bool; return_label: Cmm.label option }
+  | Ipollcall of { return_label: Cmm.label option }
 
 type instruction =
   { desc: instruction_desc;
