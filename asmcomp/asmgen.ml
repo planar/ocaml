@@ -161,12 +161,16 @@ let compile_data dl =
   ++ save_data
   ++ emit_data
 
+(* caml_apply, at end of list, don't add polls in caml_apply via flag *)
+
 let compile_phrases ~ppf_dump ps =
   let funcnames =
     List.fold_left (fun s p ->
-      match p with
-      | Cfunction fd -> String.Set.add fd.fun_name s
-      | Cdata _ -> s) String.Set.empty ps in
+        match p with
+        | Cfunction fd -> String.Set.add fd.fun_name s
+        | Cdata _ -> s)
+      String.Set.empty ps
+  in
   let rec compile ~funcnames ps =
     match ps with
     | [] -> ()
@@ -175,8 +179,7 @@ let compile_phrases ~ppf_dump ps =
        match p with
        | Cfunction fd ->
           compile_fundecl ~ppf_dump ~funcnames fd;
-          compile
-            ~funcnames:(String.Set.remove fd.fun_name funcnames) ps
+          compile ~funcnames:(String.Set.remove fd.fun_name funcnames) ps
        | Cdata dl ->
           compile_data dl;
           compile ~funcnames ps
