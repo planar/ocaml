@@ -45,12 +45,14 @@ let rec path_polls (f : Mach.instruction) : bool =
   | Itrywith (body, handler) ->
       (path_polls body) && (path_polls handler) && (path_polls f.next)
   | Ireturn | Iend | Iexit _ -> false
-  | Iop (Ialloc _) | Iraise _ -> true (* Iraise included here because
-                                                it has a poll inserted *)
+  | Iop (Ialloc _)
+  | Iop (Ipollcall _)
+  | Iraise _ -> true  (* Iraise included here because it contains a poll *)
   | Iop _ -> path_polls f.next
 
- (* Check a sequence of instructions from [f] and return whether
-   they poll (via an alloc or raising an exception) *)
+ (* Check a sequence of instructions from [f] and return whether the
+    function prologue requires a poll, by virtue of the instructions not
+    causing a poll already. *)
 let requires_prologue_poll ~future_funcnames (f : Mach.instruction) : bool =
   let rec check_path i =
   match i.desc with
@@ -73,8 +75,9 @@ let requires_prologue_poll ~future_funcnames (f : Mach.instruction) : bool =
       true
     else
       check_path i.next
-  | Iop (Ialloc _) | Iraise _ -> false (* Iraise included here because
-                                                it has a poll inserted *)
+  | Iop (Ialloc _)
+  | Iop (Ipollcall _)
+  | Iraise _ -> false  (* Iraise included here because it contains a poll *)
   | Iend | Ireturn | Iexit _ -> false
   | Iop _ -> check_path i.next
   in check_path f

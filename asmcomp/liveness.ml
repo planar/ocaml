@@ -59,8 +59,8 @@ let rec live i finally =
           | Icall_ind | Icall_imm _ | Iextcall _ | Ialloc _ | Ipollcall _
           | Iintop (Icheckbound) | Iintop_imm(Icheckbound, _) ->
               (* The function call may raise an exception, branching to the
-                 nearest enclosing try ... with. Similarly for bounds checks
-                 and allocation (for the latter: finalizers may throw
+                 nearest enclosing try ... with. Similarly for bounds checks,
+                 allocation and polls (for the latter two: finalizers may throw
                  exceptions, as may signal handlers).
                  Hence, everything that must be live at the beginning of
                  the exception handler must also be live across this instr. *)

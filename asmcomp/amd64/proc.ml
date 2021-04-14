@@ -71,9 +71,9 @@ let win64 = Arch.win64
        3. C callee-saved registers.
      This translates to the set { r10, r11 }.  These registers hence cannot
      be used for OCaml parameter passing and must also be marked as
-     destroyed across [Ialloc] (otherwise a call to caml_call_gc@PLT might
-     clobber these two registers before the assembly stub saves them into
-     the GC regs block).
+     destroyed across [Ialloc] and [Ipollcall] (otherwise a call to
+     caml_call_gc@PLT might clobber these two registers before the assembly
+     stub saves them into the GC regs block).
 *)
 
 let max_arguments_for_tailcalls = 10
@@ -294,17 +294,11 @@ let destroyed_at_c_call =
        100;101;102;103;104;105;106;107;
        108;109;110;111;112;113;114;115])
 
-let destroyed_at_alloc =
+let destroyed_at_alloc_or_poll =
   if X86_proc.use_plt then
     destroyed_by_plt_stub
   else
     [| r11 |]
-
-let destroyed_at_poll =
-  if X86_proc.use_plt then
-    destroyed_by_plt_stub
-  else
-    [||]
 
 let destroyed_at_oper = function
     Iop(Icall_ind | Icall_imm _ | Iextcall { alloc = true; }) ->
@@ -313,9 +307,7 @@ let destroyed_at_oper = function
   | Iop(Iintop(Idiv | Imod)) | Iop(Iintop_imm((Idiv | Imod), _))
         -> [| rax; rdx |]
   | Iop(Istore(Single, _, _)) -> [| rxmm15 |]
-  | Iop(Ialloc _) -> destroyed_at_alloc
-  | Iop(Ipollcall _) -> destroyed_at_poll
-  | Iifthenelse(Ipolltest _, _, _) -> destroyed_at_poll
+  | Iop(Ialloc _ | Ipollcall _) -> destroyed_at_alloc_or_poll
   | Iop(Iintop(Imulh | Icomp _) | Iintop_imm((Icomp _), _))
         -> [| rax |]
   | Iswitch(_, _) -> [| rax; rdx |]
