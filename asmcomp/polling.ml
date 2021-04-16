@@ -38,16 +38,16 @@ let join a1 a2 =
   | Alloc, Alloc -> Alloc
 
 (* Check a sequence of instructions from [i] and return
-   an approximation of its behavior *)
-let rec path_approx ~fwd_funcs i =
+   an approximation of its behavior, joined with the [acc] argument. *)
+let rec path_approx ~fwd_funcs acc i =
   match i.desc with
-  | Iifthenelse (_, i0, i1) -> branch_approx ~fwd_funcs [| i0; i1 |] i.next
-  | Iswitch (_, acts) -> branch_approx ~fwd_funcs acts i.next
+  | Iifthenelse (_, i0, i1) -> branch_approx ~fwd_funcs acc [| i0; i1 |] i.next
+  | Iswitch (_, acts) -> branch_approx ~fwd_funcs acc acts i.next
   | Icatch (_, handlers, body) ->
-    begin match path_approx ~fwd_funcs body with
-    | PRTC -> PRTC
+    begin match path_approx ~fwd_funcs Alloc body with
+    | PRTC -> (* join PRTC acc *) PRTC
     | (Exit _ | Return) as a ->
-      let add acc (_, h) = join acc (path_approx ~fwd_funcs h) in
+      let add x (_, h) = path_approx ~fwd_funcs x h in
       let a1 = List.fold_left add a handlers in
       let a2 =
         match a1 with
@@ -58,45 +58,46 @@ let rec path_approx ~fwd_funcs i =
           Exit (List.fold_left remove s1 handlers)
         | Alloc -> assert false
       in
-      seq_approx ~fwd_funcs a2 i.next
-    | Alloc -> Alloc
+      seq_approx ~fwd_funcs acc a2 i.next
+    | Alloc -> (* join Alloc acc *) acc
     end
   | Itrywith (body, handler) ->
-    seq_approx ~fwd_funcs
-      (join (path_approx ~fwd_funcs body) (path_approx ~fwd_funcs handler))
+    seq_approx ~fwd_funcs acc
+      (join (path_approx ~fwd_funcs Alloc body)
+         (path_approx ~fwd_funcs Alloc handler))
       i.next
-  | Ireturn -> Return
-  | Iop (Itailcall_ind) -> PRTC
+  | Ireturn -> join Return acc
+  | Iop (Itailcall_ind) -> (* join PRTC acc *) PRTC
   | Iop (Itailcall_imm {func; _}) ->
-    if String.Set.mem func fwd_funcs then PRTC else Return
-  | Iend -> Exit (IntSet.singleton 0)
-  | Iexit n -> Exit (IntSet.singleton n)
-  | Iraise _ -> Return
-  | Iop (Ialloc _ | Ipoll _) -> Alloc
-  | Iop _ -> path_approx ~fwd_funcs i.next
+    if String.Set.mem func fwd_funcs then PRTC else join Return acc
+  | Iend -> join (Exit (IntSet.singleton 0)) acc
+  | Iexit n -> join (Exit (IntSet.singleton n)) acc
+  | Iraise _ -> join Return acc
+  | Iop (Ialloc _ | Ipoll _) -> (* join Alloc acc *) acc
+  | Iop _ -> path_approx ~fwd_funcs acc i.next
 
-and branch_approx ~fwd_funcs branches next =
+and branch_approx ~fwd_funcs acc branches next =
   assert (branches <> [| |]);
-  let join_branch acc branch = join acc (path_approx ~fwd_funcs branch) in
-  seq_approx ~fwd_funcs (Array.fold_left join_branch Alloc branches) next
+  let join_branch a branch = path_approx ~fwd_funcs a branch in
+  seq_approx ~fwd_funcs acc (Array.fold_left join_branch Alloc branches) next
 
-and seq_approx ~fwd_funcs a next =
+and seq_approx ~fwd_funcs acc a next =
   match a with
-  | Alloc -> Alloc
+  | Alloc -> (* join Alloc acc *) acc
   | Exit s when IntSet.mem 0 s ->
-    join (Exit (IntSet.remove 0 s)) (path_approx ~fwd_funcs next)
-  | Exit _ -> a
-  | PRTC -> PRTC
-  | Return -> join Return (path_approx ~fwd_funcs next)
+    path_approx ~fwd_funcs (join (Exit (IntSet.remove 0 s)) acc) next
+  | Exit _ -> join a acc
+  | PRTC -> (* join PRTC acc *) PRTC
+  | Return -> path_approx ~fwd_funcs (join Return acc) next
 
 let path_polls i =
-  match path_approx ~fwd_funcs:String.Set.empty i with
+  match path_approx ~fwd_funcs:String.Set.empty Alloc i with
   | Alloc -> true
   | Exit s when IntSet.is_empty s -> true
   | _ -> false
 
 let requires_prologue_poll ~future_funcnames i =
-  match path_approx ~fwd_funcs:future_funcnames i with
+  match path_approx ~fwd_funcs:future_funcnames Alloc i with
   | PRTC -> true
   | _ -> false
 
