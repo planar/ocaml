@@ -23,7 +23,7 @@ type approx =
   | PRTC             (** The block can do a Potentially-Recursive Tail-Call
                          without allocating *)
   | Return           (** The block can return or (non-rec) tail-call
-                         without allocating *)
+                         or raise without allocating *)
   | Exit of IntSet.t (** The block can reach one of these exits
                          without allocating; 0 represents Iend *)
   | Alloc            (** The block allocates in all cases *)
@@ -61,22 +61,17 @@ let rec path_approx ~fwd_funcs i =
       seq_approx ~fwd_funcs a2 i.next
     | Alloc -> Alloc
     end
-  | Itrywith (body, _handler) ->
-    (* in general, this would be:
-         seq_approx ~fwd_funcs
-                    (join (path_approx ~fwd_funcs body)
-                          (path_approx ~fwd_funcs handler))
-                    i.next
-       but we insert a poll at every raise, so we can ignore the handler
-       as if it allocated immediately *)
-      seq_approx ~fwd_funcs (path_approx ~fwd_funcs body) i.next
+  | Itrywith (body, handler) ->
+    seq_approx ~fwd_funcs
+      (join (path_approx ~fwd_funcs body) (path_approx ~fwd_funcs handler))
+      i.next
   | Ireturn -> Return
   | Iop (Itailcall_ind) -> PRTC
   | Iop (Itailcall_imm {func; _}) ->
     if String.Set.mem func fwd_funcs then PRTC else Return
   | Iend -> Exit (IntSet.singleton 0)
   | Iexit n -> Exit (IntSet.singleton n)
-  | Iraise _ -> Alloc (* Iraise included here because it has a poll inserted *)
+  | Iraise _ -> Return
   | Iop (Ialloc _ | Ipoll _) -> Alloc
   | Iop _ -> path_approx ~fwd_funcs i.next
 
@@ -145,7 +140,7 @@ let rec instr_body handlers i =
     }
   | Itrywith (body, hdl) ->
     { i with
-      desc = Itrywith (instr body, instr_body IntSet.empty hdl);
+      desc = Itrywith (instr body, instr hdl);
       next = instr i.next;
     }
   | Iexit n ->

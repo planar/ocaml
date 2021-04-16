@@ -289,15 +289,6 @@ exception TestException
 let func_that_raises () =
   raise TestException
 
-let polls_added_before_raises () =
-  let minors_before = minor_gcs () in
-    request_minor_gc ();
-    try
-      func_that_raises ()
-    with TestException ->
-      let minors_after = minor_gcs () in
-        assert(minors_before+1 = minors_after)
-
 let () =
   ignore(Sys.opaque_identity(ref 41));
   polls_added_to_loops (); (* relies on there being some minor heap usage *)
@@ -328,6 +319,3 @@ let () =
 
   ignore(Sys.opaque_identity(ref 41));
   polls_not_added_to_leaf_functions ();
-
-  ignore(Sys.opaque_identity(ref 41));
-  polls_added_before_raises ()
