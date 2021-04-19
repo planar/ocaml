@@ -37,17 +37,25 @@ let join a1 a2 =
   | (Exit _ as a), Alloc | Alloc, (Exit _ as a) -> a
   | Alloc, Alloc -> Alloc
 
+(* Memo table for recursive handlers *)
+let approx_memo = (Hashtbl.create 97 : (int, approx) Hashtbl.t)
+let reset_approx_memo () = Hashtbl.reset approx_memo
+
 (* Check a sequence of instructions from [i] and return
    an approximation of its behavior, joined with the [acc] argument. *)
 let rec path_approx ~fwd_funcs acc i =
   match i.desc with
   | Iifthenelse (_, i0, i1) -> branch_approx ~fwd_funcs acc [| i0; i1 |] i.next
   | Iswitch (_, acts) -> branch_approx ~fwd_funcs acc acts i.next
-  | Icatch (_, handlers, body) ->
+  | Icatch (rec_flag, handlers, body) ->
     begin match path_approx ~fwd_funcs Alloc body with
     | PRTC -> (* join PRTC acc *) PRTC
     | (Exit _ | Return) as a ->
-      let add x (_, h) = path_approx ~fwd_funcs x h in
+      let add =
+        match rec_flag with
+        | Recursive -> fun x (n, h) -> handler_approx ~fwd_funcs n x h
+        | Nonrecursive -> fun x (_, h) -> path_approx ~fwd_funcs x h
+      in
       let a1 = List.fold_left add a handlers in
       let a2 =
         match a1 with
@@ -90,21 +98,21 @@ and seq_approx ~fwd_funcs acc a next =
   | PRTC -> (* join PRTC acc *) PRTC
   | Return -> path_approx ~fwd_funcs (join Return acc) next
 
-let path_polls i =
-  match path_approx ~fwd_funcs:String.Set.empty Alloc i with
-  | Alloc -> true
-  | Exit s when IntSet.is_empty s -> true
-  | _ -> false
-
-let requires_prologue_poll ~future_funcnames i =
-  match path_approx ~fwd_funcs:future_funcnames Alloc i with
-  | PRTC -> true
-  | _ -> false
+and handler_approx ~fwd_funcs n acc i =
+  match Hashtbl.find_opt approx_memo n with
+  | Some a -> join a acc
+  | None ->
+    let a = path_approx ~fwd_funcs Alloc i in
+    Hashtbl.add approx_memo n a;
+    join a acc
 
 (* This determines whether from a given instruction we unconditionally
    allocate and this is used to avoid adding polls unnecessarily *)
-let polls_unconditionally (i : Mach.instruction) =
-  path_polls i
+let path_polls n i =
+  match handler_approx ~fwd_funcs:String.Set.empty n Alloc i with
+  | Alloc -> true
+  | Exit s when IntSet.is_empty s -> true
+  | _ -> false
 
 (* Given the handlers in scope without intervening allocation,
    add polls before unguarded backwards edges,
@@ -132,7 +140,7 @@ let rec instr_body handlers i =
       next = instr i.next;
     }
   | Icatch (Recursive, hdl, body) ->
-    let f s (n, i0) = if polls_unconditionally i0 then s else IntSet.add n s in
+    let f s (n, i0) = if path_polls n i0 then s else IntSet.add n s in
     let new_handlers = List.fold_left f handlers hdl in
     let instr_handler (n, i0) = (n, instr_body new_handlers i0) in
     { i with
@@ -152,7 +160,19 @@ let rec instr_body handlers i =
   | Iend | Ireturn | Iraise _ -> i
   | Iop _ -> { i with next = instr i.next }
 
-let instrument_body_with_polls i = instr_body IntSet.empty i
+let instrument_body_with_polls i =
+  reset_approx_memo ();
+  Fun.protect ~finally:reset_approx_memo
+    (fun () -> instr_body IntSet.empty i)
 
 let instrument_fundecl ~future_funcnames:_ (f : Mach.fundecl) : Mach.fundecl =
   { f with fun_body = instrument_body_with_polls f.fun_body }
+
+let requires_prologue_poll ~future_funcnames i =
+  reset_approx_memo ();
+  let work () =
+    match path_approx ~fwd_funcs:future_funcnames Alloc i with
+    | PRTC -> true
+    | _ -> false
+  in
+  Fun.protect ~finally:reset_approx_memo work
