@@ -33,7 +33,7 @@ let rec path_polls (f : Mach.instruction) : bool =
       (path_polls body) && (path_polls handler) && (path_polls f.next)
   | Ireturn | Iend | Iexit _ -> false
   | Iop (Ialloc _)
-  | Iop (Ipollcall _)
+  | Iop (Ipoll _)
   | Iraise _ -> true  (* Iraise included here because it contains a poll *)
   | Iop _ -> path_polls f.next
 
@@ -63,7 +63,7 @@ let requires_prologue_poll ~future_funcnames (f : Mach.instruction) : bool =
     else
       check_path i.next
   | Iop (Ialloc _)
-  | Iop (Ipollcall _)
+  | Iop (Ipoll _)
   | Iraise _ -> false  (* Iraise included here because it contains a poll *)
   | Iend | Ireturn | Iexit _ -> false
   | Iop _ -> check_path i.next
@@ -181,7 +181,7 @@ let instrument_body_with_polls (rec_handlers : int list) (i : Mach.instruction)
         let new_f = { f with next = instrument_with_handlers f.next } in
         if List.mem id current_handlers && List.mem id rec_handlers then
           Mach.instr_cons
-            (Iop (Ipollcall { return_label = None }))
+            (Iop (Ipoll { return_label = None }))
             [||] [||] new_f
         else new_f
     | Iend | Ireturn | Iop (Itailcall_ind) | Iop (Itailcall_imm _) | Iraise _

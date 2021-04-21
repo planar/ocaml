@@ -354,7 +354,7 @@ let num_call_gc_and_check_bound_points env =
     | Lend -> totals
     | Lop (Ialloc _) when env.f.fun_fast ->
       loop instr.next (call_gc + 1, check_bound)
-    | Lop (Ipollcall _) ->
+    | Lop (Ipoll _) ->
       loop instr.next (call_gc + 1, check_bound)
     | Lop (Iintop Icheckbound)
     | Lop (Iintop_imm (Icheckbound, _))
@@ -415,7 +415,7 @@ module BR = Branch_relaxation.Make (struct
 
     let classify_instr = function
       | Lop (Ialloc _)
-      | Lop (Ipollcall _)
+      | Lop (Ipoll _)
       | Lop (Iintop Icheckbound)
       | Lop (Iintop_imm (Icheckbound, _))
       | Lop (Ispecific (Ishiftcheckbound _)) -> Some Bcc
@@ -463,8 +463,8 @@ module BR = Branch_relaxation.Make (struct
       based + begin match size with Single -> 2 | _ -> 1 end
     | Lop (Ialloc _) when f.fun_fast -> 5
     | Lop (Ispecific (Ifar_alloc _)) when f.fun_fast -> 6
-    | Lop (Ipollcall _) -> 3
-    | Lop (Ispecific (Ifar_pollcall _)) -> 4
+    | Lop (Ipoll _) -> 3
+    | Lop (Ispecific (Ifar_poll _)) -> 4
     | Lop (Ialloc { bytes = num_bytes; _ })
     | Lop (Ispecific (Ifar_alloc { bytes = num_bytes; _ })) ->
       begin match num_bytes with
@@ -770,7 +770,7 @@ let emit_instr env i =
         assembly_code_for_allocation env i ~n ~far:false ~dbginfo
     | Lop(Ispecific (Ifar_alloc { bytes = n; dbginfo })) ->
         assembly_code_for_allocation env i ~n ~far:true ~dbginfo
-    | Lop(Ipollcall { check_young_limit; return_label }) ->
+    | Lop(Ipoll { return_label }) ->
         assembly_code_for_poll i ~far:false ~check_young_limit ~return_label
     | Lop(Ispecific (Ifar_pollcall { check_young_limit; return_label })) ->
         assembly_code_for_poll i ~far:true ~check_young_limit ~return_label
