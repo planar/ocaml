@@ -643,7 +643,7 @@ let emit_instr fallthrough i =
         def_label label;
         I.lea (mem32 NONE 4 RAX) (reg i.res.(0))
       end
-  | Lop(Ipollcall { check_young_limit; return_label }) ->
+  | Lop(Ipoll { check_young_limit; return_label }) ->
     if check_young_limit then
       begin
         load_domain_state ebx;

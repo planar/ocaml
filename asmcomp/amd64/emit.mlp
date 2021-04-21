@@ -649,7 +649,7 @@ let emit_instr fallthrough i =
         def_label label;
         I.lea (mem64 NONE 8 R15) (res i 0)
       end
-  | Lop(Ipollcall { return_label }) ->
+  | Lop(Ipoll { return_label }) ->
       I.cmp (domain_field Domainstate.Domain_young_limit) r15;
       let gc_call_label = new_label () in
       let label_after_gc = match return_label with

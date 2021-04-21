@@ -71,7 +71,7 @@ let win64 = Arch.win64
        3. C callee-saved registers.
      This translates to the set { r10, r11 }.  These registers hence cannot
      be used for OCaml parameter passing and must also be marked as
-     destroyed across [Ialloc] and [Ipollcall] (otherwise a call to
+     destroyed across [Ialloc] and [Ipoll] (otherwise a call to
      caml_call_gc@PLT might clobber these two registers before the assembly
      stub saves them into the GC regs block).
 *)
@@ -307,7 +307,7 @@ let destroyed_at_oper = function
   | Iop(Iintop(Idiv | Imod)) | Iop(Iintop_imm((Idiv | Imod), _))
         -> [| rax; rdx |]
   | Iop(Istore(Single, _, _)) -> [| rxmm15 |]
-  | Iop(Ialloc _ | Ipollcall _) -> destroyed_at_alloc_or_poll
+  | Iop(Ialloc _ | Ipoll _) -> destroyed_at_alloc_or_poll
   | Iop(Iintop(Imulh | Icomp _) | Iintop_imm((Icomp _), _))
         -> [| rax |]
   | Iswitch(_, _) -> [| rax; rdx |]
@@ -339,7 +339,7 @@ let max_register_pressure = function
         if fp then [| 3; 0 |] else  [| 4; 0 |]
   | Iintop(Idiv | Imod) | Iintop_imm((Idiv | Imod), _) ->
     if fp then [| 10; 16 |] else [| 11; 16 |]
-  | Ialloc _ | Ipollcall _ ->
+  | Ialloc _ | Ipoll _ ->
     if fp then [| 11 - num_destroyed_by_plt_stub; 16 |]
     else [| 12 - num_destroyed_by_plt_stub; 16 |]
   | Iintop(Icomp _) | Iintop_imm((Icomp _), _) ->
@@ -353,7 +353,7 @@ let max_register_pressure = function
 
 let op_is_pure = function
   | Icall_ind | Icall_imm _ | Itailcall_ind | Itailcall_imm _
-  | Iextcall _ | Istackoffset _ | Istore _ | Ialloc _ | Ipollcall _
+  | Iextcall _ | Istackoffset _ | Istore _ | Ialloc _ | Ipoll _
   | Iintop(Icheckbound) | Iintop_imm(Icheckbound, _) -> false
   | Ispecific(Ilea _|Isextend32|Izextend32) -> true
   | Ispecific _ -> false

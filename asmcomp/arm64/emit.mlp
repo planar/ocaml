@@ -392,7 +392,7 @@ let num_call_gc_and_check_bound_points instr =
     | Lend -> totals
     | Lop (Ialloc _) when !fastcode_flag ->
       loop instr.next (call_gc + 1, check_bound)
-    | Lop (Ipollcall _) ->
+    | Lop (Ipoll _) ->
       loop instr.next (call_gc + 1, check_bound)
     | Lop (Iintop Icheckbound)
     | Lop (Iintop_imm (Icheckbound, _))
@@ -453,7 +453,7 @@ module BR = Branch_relaxation.Make (struct
 
     let classify_instr = function
       | Lop (Ialloc _)
-      | Lop (Ipollcall _)
+      | Lop (Ipoll _)
       | Lop (Iintop Icheckbound)
       | Lop (Iintop_imm (Icheckbound, _))
       | Lop (Ispecific (Ishiftcheckbound _)) -> Some Bcc
@@ -500,7 +500,7 @@ module BR = Branch_relaxation.Make (struct
       let based = match addr with Iindexed _ -> 0 | Ibased _ -> 1 in
       based + begin match size with Single -> 2 | _ -> 1 end
     | Lop (Ialloc _) when !fastcode_flag -> 5
-    | Lop (Ipollcall { check_young_limit; _ }) ->
+    | Lop (Ipoll { check_young_limit; _ }) ->
       begin match check_young_limit with
       | true -> 3
       | false -> 1
@@ -816,7 +816,7 @@ let emit_instr i =
         assembly_code_for_allocation i ~n ~far:false ~dbginfo
     | Lop(Ispecific (Ifar_alloc { bytes = n; dbginfo })) ->
         assembly_code_for_allocation i ~n ~far:true ~dbginfo
-    | Lop(Ipollcall { check_young_limit; return_label }) ->
+    | Lop(Ipoll { check_young_limit; return_label }) ->
         assembly_code_for_poll i ~far:false ~check_young_limit ~return_label
     | Lop(Ispecific (Ifar_pollcall { check_young_limit; return_label })) ->
         assembly_code_for_poll i ~far:true ~check_young_limit ~return_label

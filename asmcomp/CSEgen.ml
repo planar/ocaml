@@ -227,7 +227,7 @@ method class_of_operation op =
   | Istackoffset _ -> Op_other
   | Iload(_,_) -> Op_load
   | Istore(_,_,asg) -> Op_store asg
-  | Ialloc _ | Ipollcall _ -> assert false     (* treated specially *)
+  | Ialloc _ | Ipoll _ -> assert false     (* treated specially *)
   | Iintop(Icheckbound) -> Op_checkbound
   | Iintop _ -> Op_pure
   | Iintop_imm(Icheckbound, _) -> Op_checkbound
@@ -277,7 +277,7 @@ method private cse n i =
          arguments is always a memory load.  For simplicity, we
          just forget everything. *)
       {i with next = self#cse empty_numbering i.next}
-  | Iop (Ialloc _ | Ipollcall _) ->
+  | Iop (Ialloc _ | Ipoll _) ->
       (* For allocations and polls, we must avoid extending the live range of a
          pseudoregister across the allocation if this pseudoreg
          is a derived heap pointer (a pointer into the heap that does

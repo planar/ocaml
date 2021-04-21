@@ -414,7 +414,7 @@ method mark_instr = function
       self#mark_call
   | Iop (Itailcall_ind | Itailcall_imm _) ->
       self#mark_tailcall
-  | Iop (Ialloc _) | Iop (Ipollcall _) ->
+  | Iop (Ialloc _) | Iop (Ipoll _) ->
       self#mark_call (* caml_alloc*, caml_garbage_collection (incl. polls) *)
   | Iop (Iintop (Icheckbound) | Iintop_imm(Icheckbound, _)) ->
       self#mark_c_tailcall (* caml_ml_array_bound_error *)
@@ -669,7 +669,7 @@ method emit_expr (env:environment) exp =
           (* poll is added here because if we add it later in the polling
             Mach pass then we can come between this move and the raise,
             which can end up destroying the loc_exn_bucket *)
-          self#insert env (Iop (Ipollcall { return_label = None })) [||] [||];
+          self#insert env (Iop (Ipoll { return_label = None })) [||] [||];
           let rd = [|Proc.loc_exn_bucket|] in
           self#insert env (Iop Imove) r1 rd;
           self#insert_debug env  (Iraise k) dbg rd [||];
@@ -1175,7 +1175,7 @@ method emit_fundecl ~future_funcnames f =
   self#insert_moves env loc_arg rarg;
   let polled_body =
     if Polling.requires_prologue_poll ~future_funcnames body then
-      instr_cons (Iop(Ipollcall { return_label = None })) [||] [||] body
+      instr_cons (Iop(Ipoll { return_label = None })) [||] [||] body
     else
       body
     in
