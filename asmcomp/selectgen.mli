@@ -139,8 +139,7 @@ class virtual selector_generic : object
      above; overloading this is useful if Ispecific instructions need
      marking *)
 
-  (* The following method is the entry point and should not be overridden
-     (except by [Spacetime_profiling]). *)
+  (* The following method is the entry point and should not be overridden *)
   method emit_fundecl : future_funcnames:Misc.Stdlib.String.Set.t
                                               -> Cmm.fundecl -> Mach.fundecl
 
