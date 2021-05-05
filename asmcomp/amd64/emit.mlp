@@ -625,7 +625,7 @@ let emit_instr env fallthrough i =
       in
       begin match return_label with
       | None -> I.jbe (label gc_call_label)
-      | Some return_label -> I.jg (label return_label)
+      | Some return_label -> I.ja (label return_label)
       end;
       call_gc_sites :=
         { gc_lbl = gc_call_label;
