@@ -600,7 +600,7 @@ let emit_instr env fallthrough i =
         env.call_gc_sites <-
           { gc_lbl = lbl_call_gc;
             gc_return_lbl = lbl_after_alloc;
-            gc_frame = lbl_frame; } :: !call_gc_sites
+            gc_frame_lbl = lbl_frame; } :: env.call_gc_sites
       end else begin
         begin match n with
         | 16 -> emit_call "caml_alloc1"
@@ -621,16 +621,16 @@ let emit_instr env fallthrough i =
                   | None -> new_label()
                   | Some(lbl) -> lbl in
       let lbl_frame =
-        record_frame_label i.live (Dbg_alloc [])
+        record_frame_label env i.live (Dbg_alloc [])
       in
       begin match return_label with
       | None -> I.jbe (label gc_call_label)
       | Some return_label -> I.ja (label return_label)
       end;
-      call_gc_sites :=
+      env.call_gc_sites <-
         { gc_lbl = gc_call_label;
           gc_return_lbl = lbl_after_poll;
-          gc_frame = lbl_frame; } :: !call_gc_sites;
+          gc_frame_lbl = lbl_frame; } :: env.call_gc_sites;
       begin match return_label with
       | None -> def_label lbl_after_poll
       | Some _ -> I.jmp (label gc_call_label)

@@ -89,7 +89,7 @@ module Make (T : Branch_relaxation_intf.S) = struct
           match instr.desc with
           | Lop (Ipoll { return_label }) ->
             instr.desc <- T.relax_poll ~return_label;
-            fixup true (pc + T.instr_size instr.desc) instr.next
+            fixup true (pc + T.instr_size f instr.desc) instr.next
           | Lop (Ialloc { bytes = num_bytes; dbginfo }) ->
             instr.desc <- T.relax_allocation ~num_bytes ~dbginfo;
             fixup true (pc + T.instr_size f instr.desc) instr.next
