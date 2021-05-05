@@ -16,182 +16,182 @@ open Mach
 
 module String = Misc.Stdlib.String
 
-(* Check a sequence of instructions from [f] and return whether
-   they poll (via an alloc or raising an exception) *)
-let rec path_polls (f : Mach.instruction) : bool =
-  match f.desc with
-  | Iifthenelse (_, i0, i1) ->
-      ((path_polls i0) && (path_polls i1)) || (path_polls f.next)
-  | Iswitch (_, acts) ->
-      (Array.for_all path_polls acts) && (path_polls f.next)
-  | Icatch (_, handlers, body) ->
-     (path_polls f.next) && (path_polls body)
-     &&
-     (List.for_all path_polls (List.map (fun (_, handler_code) ->
-      handler_code) handlers))
-  | Itrywith (body, handler) ->
-      (path_polls body) && (path_polls handler) && (path_polls f.next)
-  | Ireturn | Iend | Iexit _ -> false
-  | Iop (Ialloc _)
-  | Iop (Ipoll _)
-  | Iraise _ -> true  (* Iraise included here because it contains a poll *)
-  | Iop _ -> path_polls f.next
+(* Detection of recursive handlers that are not guaranteed to poll
+   at every loop iteration. *)
 
- (* Check a sequence of instructions from [f] and return whether the
-    function prologue requires a poll, by virtue of the instructions not
-    causing a poll already. *)
-let requires_prologue_poll ~future_funcnames (f : Mach.instruction) : bool =
-  let rec check_path i =
-  match i.desc with
-  | Iifthenelse (_, i0, i1) ->
-      (check_path i0) || (check_path i1) || (check_path i.next)
-  | Iswitch (_, acts) ->
-      (Array.exists check_path acts) || (check_path i.next)
-  | Icatch (_, handlers, body) ->
-     (check_path body)
-     ||
-      (List.exists check_path (List.map (fun (_, handler_code) ->
-        handler_code) handlers)) || (check_path i.next)
-  | Itrywith (body, handler) ->
-      (check_path body) || (check_path handler) || (check_path i.next)
-  | Iop (Itailcall_ind) -> true
-  | Iop (Itailcall_imm { func; _ }) ->
-    if (String.Set.mem func future_funcnames) then
-      (* this means we have a call to a function that might be a self call
-         or a call to a future function (which won't have a poll) *)
-      true
-    else
-      check_path i.next
-  | Iop (Ialloc _)
-  | Iop (Ipoll _)
-  | Iraise _ -> false  (* Iraise included here because it contains a poll *)
-  | Iend | Ireturn | Iexit _ -> false
-  | Iop _ -> check_path i.next
-  in check_path f
+(* The result of the analysis is a mapping from handlers H
+   (= loop heads) to Booleans b.
 
-(* This determines whether from a given instruction we unconditionally
-   allocate and this is used to avoid adding polls unnecessarily *)
-let polls_unconditionally (i : Mach.instruction) =
-  path_polls i
+   b is true if every path starting from H goes through an Ialloc,
+   Ipoll, Ireturn, Itailcall_ind or Itailcall_imm instruction.
 
-(* returns a list of ids for the handlers of recursive catches from
-   Mach instruction [f]. These are used to later add polls before
-   exits to them. *)
-let rec find_rec_handlers ~future_funcnames (f : Mach.instruction) =
-  match f.desc with
-  | Iifthenelse (_, ifso, ifnot) ->
-      let ifso_rec_handlers = find_rec_handlers ~future_funcnames ifso in
-      let ifnot_rec_handlers = find_rec_handlers ~future_funcnames ifnot in
-      let next_rec_handlers = find_rec_handlers ~future_funcnames f.next in
-      ifso_rec_handlers @ ifnot_rec_handlers @ next_rec_handlers
-  | Iswitch (_, cases) ->
-      let case_rec_handlers =
-        Array.fold_left
-          (fun agg_rec_handlers case ->
-            agg_rec_handlers @ find_rec_handlers ~future_funcnames case)
-          [] cases
-      in
-      case_rec_handlers @ find_rec_handlers ~future_funcnames f.next
-  | Icatch (rec_flag, handlers, body) -> (
-      match rec_flag with
-      | Recursive ->
-          let rec_handlers =
-            List.map
-              (fun (id, handler) ->
-                let inner_rec_handlers = find_rec_handlers ~future_funcnames
-                  handler in
-                let current_rec_handlers =
-                  if not (polls_unconditionally handler) then [ id ] else []
-                in
-                inner_rec_handlers @ current_rec_handlers)
-              handlers
-            |> List.flatten
-          in
-          let body_rec_handlers = find_rec_handlers ~future_funcnames body in
-          body_rec_handlers @ rec_handlers @ find_rec_handlers
-            ~future_funcnames f.next
-      | Nonrecursive ->
-          let non_rec_catch_handlers =
-            List.fold_left
-              (fun tmp_rec_handlers (_, handler) ->
-                tmp_rec_handlers @ find_rec_handlers ~future_funcnames handler)
-              [] handlers
-          in
-          let body_rec_handlers = find_rec_handlers ~future_funcnames body in
-          body_rec_handlers @ non_rec_catch_handlers @ find_rec_handlers
-            ~future_funcnames f.next
-      )
-  | Itrywith (body, handler) ->
-      let handler_rec_handler = find_rec_handlers ~future_funcnames handler in
-      let body_rec_handlers = find_rec_handlers ~future_funcnames body in
-      body_rec_handlers @ handler_rec_handler @ find_rec_handlers
-        ~future_funcnames f.next
-  | Iexit _ | Iend | Ireturn
-  | Iop (Itailcall_ind)
-  | Iop (Itailcall_imm _)
-  | Iraise _ ->
-      []
-  | Iop _ -> find_rec_handlers ~future_funcnames f.next
+   (Iraise is treated like Ireturn if not handled locally, or like
+    a branch to the nearest enclosing exception handler.)
 
-(* given the list of handler ids [rec_handlers] for recursive catches, add polls
-   before backwards edges starting from Mach instruction [i] *)
-let instrument_body_with_polls (rec_handlers : int list) (i : Mach.instruction)
-    =
-  (* the [current_handlers] list allows for an optimisation which avoids
-    putting a poll before the first jump in to a loop *)
-  let rec instrument_body (current_handlers : int list) (f : Mach.instruction) =
-    let instrument_with_handlers i = instrument_body current_handlers i in
-    match f.desc with
-    | Iifthenelse (test, i0, i1) ->
-        {
-          f with
-          desc = Iifthenelse (
-            test, instrument_with_handlers i0, instrument_with_handlers i1
-          );
-          next = instrument_with_handlers f.next;
-        }
-    | Iswitch (index, cases) ->
-        {
-          f with
-          desc = Iswitch (index, Array.map instrument_with_handlers cases);
-          next = instrument_with_handlers f.next;
-        }
-    | Icatch (rec_flag, handlers, body) ->
-        {
-          f with
-          desc =
-            Icatch
-              ( rec_flag,
-                List.map
-                  (fun (idx, instrs) ->
-                    (idx, instrument_body (idx :: current_handlers) instrs))
-                  handlers,
-                instrument_with_handlers body );
-          next = instrument_with_handlers f.next;
-        }
-    | Itrywith (body, handler) ->
-        {
-          f with
-          desc = Itrywith (
-            instrument_with_handlers body, instrument_with_handlers handler
-          );
-          next = instrument_with_handlers f.next;
-        }
-    | Iexit id ->
-        let new_f = { f with next = instrument_with_handlers f.next } in
-        if List.mem id current_handlers && List.mem id rec_handlers then
-          Mach.instr_cons
-            (Iop (Ipoll { return_label = None }))
-            [||] [||] new_f
-        else new_f
-    | Iend | Ireturn | Iop (Itailcall_ind) | Iop (Itailcall_imm _) | Iraise _
-      ->
-        f
-    | Iop _ -> { f with next = instrument_with_handlers f.next }
+   b is false, therefore, if starting from H we can loop infinitely
+   without crossing an Ialloc or Ipoll instruction.
+*)
+
+(* The analysis is a backward dataflow analysis starting from false,
+   using && (Boolean "and") as the join operator,
+   and with the following transfer function:
+
+   TRANSF(Ialloc | Ipoll | Itailcall_ind | Itailcall_imm _ | Ireturn) = true
+   TRANSF(all other operations, x) = x
+*)
+
+let polled_loops_analysis funbody =
+  let handlers : (int, bool) Hashtbl.t = Hashtbl.create 20 in
+  let get_handler n =
+    match Hashtbl.find_opt handlers n with Some b -> b | None -> false in
+  let set_handler n b =
+    Hashtbl.replace handlers n b in
+  let rec before i end_ exn =
+    match i.desc with
+    | Iend -> end_
+    | Iop (Ialloc _ | Ipoll _ | Itailcall_ind | Itailcall_imm _) -> true
+    | Iop (Icall_ind | Icall_imm _) ->  (* TODO: make sure we can ignore exn *)
+        before i.next end_ exn
+    | Iop op ->
+        if operation_can_raise op
+        then exn && before i.next end_ exn
+        else before i.next end_ exn
+    | Ireturn -> true
+    | Iifthenelse(_, ifso, ifnot) ->
+        let join = before i.next end_ exn in
+        before ifso join exn && before ifnot join exn
+    | Iswitch(_, branches) ->
+        let join = before i.next end_ exn in
+        Array.for_all (fun i -> before i join exn) branches
+    | Icatch (Cmm.Nonrecursive, handlers, body) ->
+        List.iter
+          (fun (n, h) -> set_handler n (before h end_ exn))
+          handlers;
+        before body end_ exn
+    | Icatch (Cmm.Recursive, handlers, body) ->
+        let update changed (n, h) =
+          let b0 = get_handler n in
+          let b1 = before h end_ exn in
+          if b1 = b0 then changed else (set_handler n b1; true) in
+        while List.fold_left update false handlers do () done;
+        before body end_ exn
+    | Iexit n ->
+        get_handler n
+    | Itrywith(body, handler) ->
+        before body end_ (before handler end_ exn)
+    | Iraise _ ->
+        exn
   in
-  instrument_body [] i
+    ignore (before funbody true true);
+    get_handler
 
-let instrument_fundecl ~future_funcnames (i : Mach.fundecl) : Mach.fundecl =
-  let f = i.fun_body in
-  let rec_handlers = find_rec_handlers ~future_funcnames f in
-  { i with fun_body = instrument_body_with_polls rec_handlers f }
+(* Detection of functions that can loop via a tail-call without going
+   through a poll point. *)
+
+(* The result of the analysis is a single Boolean b.
+
+   b is true if there exists a path from the function entry to a
+   Potentially Recursive Tail Call (an Itailcall_ind or
+   Itailcall_imm to a forward function) 
+   that does not go through an Ialloc or Ipoll instruction.
+
+   b is false, therefore, if the function always polls (via Ialloc or Ipoll)
+   before doing a PRTC.
+
+   To compute b, we do a backward dataflow analysis starting from
+   false, using || (Boolean "or") as the join operator, and with the
+   following transfer function:
+
+   TRANSF(Ialloc | Ipoll, x) = false
+   TRANSF(Itailcall_ind, x) = true
+   TRANSF(Itailcall_imm f, x) = f is a forward function
+   TRANSF(all other operations, x) = x
+*)
+
+let potentially_recursive_tailcall ~fwd_func funbody =
+  let handlers : (int, bool) Hashtbl.t = Hashtbl.create 20 in
+  let get_handler n =
+    match Hashtbl.find_opt handlers n with Some b -> b | None -> false in
+  let set_handler n b =
+    Hashtbl.replace handlers n b in
+  let rec before i end_ exn =
+    match i.desc with
+    | Iend -> end_
+    | Iop (Ialloc _ | Ipoll _) -> false
+    | Iop (Itailcall_ind) -> true
+    | Iop (Itailcall_imm { func }) -> String.Set.mem func fwd_func
+    | Iop op ->
+        if operation_can_raise op
+        then exn || before i.next end_ exn
+        else before i.next end_ exn
+    | Ireturn -> false
+    | Iifthenelse(_, ifso, ifnot) ->
+        let join = before i.next end_ exn in
+        before ifso join exn || before ifnot join exn
+    | Iswitch(_, branches) ->
+        let join = before i.next end_ exn in
+        Array.exists (fun i -> before i join exn) branches
+    | Icatch (Cmm.Nonrecursive, handlers, body) ->
+        List.iter
+          (fun (n, h) -> set_handler n (before h end_ exn))
+          handlers;
+        before body end_ exn
+    | Icatch (Cmm.Recursive, handlers, body) ->
+        let update changed (n, h) =
+          let b0 = get_handler n in
+          let b1 = before h end_ exn in
+          if b1 = b0 then changed else (set_handler n b1; true) in
+        while List.fold_left update false handlers do () done;
+        before body end_ exn
+    | Iexit n ->
+        get_handler n
+    | Itrywith(body, handler) ->
+        before body end_ (before handler end_ exn)
+    | Iraise _ ->
+        exn
+  in
+    before funbody false false
+
+(* Given the handlers in scope without intervening allocation,
+   add polls before unguarded backwards edges,
+   starting from Mach instruction [i] *)
+let instr_body handler_ok i =
+  let rec instr i =
+  match i.desc with
+  | Iifthenelse (test, i0, i1) ->
+    { i with
+      desc = Iifthenelse (test, instr i0, instr i1);
+      next = instr i.next;
+    }
+  | Iswitch (index, cases) ->
+    { i with
+      desc = Iswitch (index, Array.map instr cases);
+      next = instr i.next;
+    }
+  | Icatch (rc, hdl, body) ->
+    { i with
+      desc = Icatch (rc,
+                     List.map (fun (n, i0) -> (n, instr i0)) hdl,
+                     instr body);
+      next = instr i.next;
+    }
+  | Itrywith (body, hdl) ->
+    { i with
+      desc = Itrywith (instr body, instr hdl);
+      next = instr i.next;
+    }
+  | Iexit n ->
+    if handler_ok n then
+      i
+    else
+      Mach.instr_cons (Iop (Ipoll { return_label = None })) [||] [||] i
+  | Iend | Ireturn | Iraise _ -> i
+  | Iop _ -> { i with next = instr i.next }
+  in
+    instr i
+
+let instrument_fundecl ~future_funcnames:_ (f : Mach.fundecl) : Mach.fundecl =
+  let handlers_ok = polled_loops_analysis f.fun_body in
+  { f with fun_body = instr_body handlers_ok f.fun_body }
+let requires_prologue_poll ~future_funcnames i =
+  potentially_recursive_tailcall ~fwd_func:future_funcnames i
