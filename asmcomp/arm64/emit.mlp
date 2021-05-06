@@ -583,9 +583,9 @@ let assembly_code_for_allocation env i ~n ~far ~dbginfo =
     `{emit_label lbl_frame}:	add	{emit_reg i.res.(0)}, {emit_reg reg_alloc_ptr}, #8\n`
   end
 
-let assembly_code_for_poll i ~far ~return_label =
+let assembly_code_for_poll env i ~far ~return_label =
   let lbl_frame =
-    record_frame_label i.live (Dbg_alloc [])
+    record_frame_label env i.live (Dbg_alloc [])
   in
   let lbl_call_gc = new_label() in
   let lbl_after_poll = match return_label with
@@ -610,10 +610,10 @@ let assembly_code_for_poll i ~far ~return_label =
   | None -> `{emit_label lbl_after_poll}:`
   | _ -> ()
   end;
-  call_gc_sites :=
+  env.call_gc_sites <-
     { gc_lbl = lbl_call_gc;
       gc_return_lbl = lbl_after_poll;
-      gc_frame_lbl = lbl_frame; } :: !call_gc_sites
+      gc_frame_lbl = lbl_frame; } :: env.call_gc_sites
 
 (* Output .text section directive, or named .text.caml.<name> if enabled. *)
 
@@ -769,9 +769,9 @@ let emit_instr env i =
     | Lop(Ispecific (Ifar_alloc { bytes = n; dbginfo })) ->
         assembly_code_for_allocation env i ~n ~far:true ~dbginfo
     | Lop(Ipoll { return_label }) ->
-        assembly_code_for_poll i ~far:false ~return_label
+        assembly_code_for_poll env i ~far:false ~return_label
     | Lop(Ispecific (Ifar_poll { return_label })) ->
-        assembly_code_for_poll i ~far:true ~return_label
+        assembly_code_for_poll env i ~far:true ~return_label
     | Lop(Iintop_imm(Iadd, n)) ->
         emit_addimm i.res.(0) i.arg.(0) n
     | Lop(Iintop_imm(Isub, n)) ->
