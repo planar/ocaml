@@ -23,20 +23,16 @@
 external request_minor_gc : unit -> unit = "request_minor_gc"
 external minor_gcs : unit -> int = "minor_gcs"
 
-(* This function tests that polls are added only to the back edges of loops *)
+(* This function tests that polls are added to the entry point of loops *)
 let polls_added_to_loops () =
   let minors_before = minor_gcs () in
   request_minor_gc ();
   for a = 0 to 1 do
     let minors_now = minor_gcs () in
-    if a = 0 then
-      (* No polls on the entry to the loop *)
-      assert (minors_before = minors_now)
-    else
-      (* We should have hit a poll on the jump at the end of the
-         first iteration *)
-      assert (minors_before < minors_now)
+    (* Poll is at loop entry *)
+    assert (minors_before < minors_now)
   done
+
 
 (* This next pair of functions test that polls are added to the prologue
    of a function. We need a loop in this function to avoid the poll getting
@@ -283,21 +279,6 @@ let polls_not_added_to_immediate_calls () =
     (* should be no minor collections *)
     assert(minors_before = minors_after)
 
-(* this set of functions tests whether polls are added before raises *)
-exception TestException
-
-let func_that_raises () =
-  raise TestException
-
-let polls_added_before_raises () =
-  let minors_before = minor_gcs () in
-    request_minor_gc ();
-    try
-      func_that_raises ()
-    with TestException ->
-      let minors_after = minor_gcs () in
-        assert(minors_before+1 = minors_after)
-
 let () =
   ignore(Sys.opaque_identity(ref 41));
   polls_added_to_loops (); (* relies on there being some minor heap usage *)
@@ -328,6 +309,3 @@ let () =
 
   ignore(Sys.opaque_identity(ref 41));
   polls_not_added_to_leaf_functions ();
-
-  ignore(Sys.opaque_identity(ref 41));
-  polls_added_before_raises ()
