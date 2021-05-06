@@ -413,16 +413,16 @@ let emit_instr env i =
                     | None -> new_label()
                     | Some(lbl) -> lbl in
         let lbl_frame =
-          record_frame_label i.live (Dbg_alloc [])
+          record_frame_label env i.live (Dbg_alloc [])
         in
         begin match return_label with
         | None -> `	brcl    4, {emit_label lbl_call_gc}\n`;  (* less than *)
         | Some return_label -> `	brcl    10, {emit_label return_label}\n`;  (* higher *)
         end;
-        call_gc_sites :=
+        env.call_gc_sites <-
           { gc_lbl = lbl_call_gc;
             gc_return_lbl = label_after_gc;
-            gc_frame_lbl = lbl_frame; } :: !call_gc_sites;
+            gc_frame_lbl = lbl_frame; } :: env.call_gc_sites;
         begin match return_label with
         | None -> `{emit_label label_after_gc}:`;
         | Some _ -> `	brcl    15, {emit_label lbl_call_gc}\n`;  (* unconditional *)

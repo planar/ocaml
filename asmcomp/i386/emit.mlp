@@ -582,9 +582,10 @@ let emit_instr env fallthrough i =
           end
       end
   | Lop(Ipoll { return_label }) ->
-    match return_label with
-    None -> ()
-    | Some lbl -> I.jmp lbl
+    begin match return_label with
+      None -> ()
+    | Some lbl -> I.jmp (label lbl)
+    end
   | Lop(Ialloc { bytes = n; dbginfo }) ->
       if env.f.fun_fast then begin
         load_domain_state ebx;
