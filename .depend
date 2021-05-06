@@ -2102,11 +2102,11 @@ asmcomp/afl_instrument.cmi : \
     lambda/debuginfo.cmi \
     asmcomp/cmm.cmi
 asmcomp/arch.cmo : \
-    utils/config.cmi \
-    utils/clflags.cmi
+    lambda/debuginfo.cmi \
+    utils/config.cmi
 asmcomp/arch.cmx : \
-    utils/config.cmx \
-    utils/clflags.cmx
+    lambda/debuginfo.cmx \
+    utils/config.cmx
 asmcomp/asmgen.cmo : \
     lambda/translmod.cmi \
     asmcomp/split.cmi \
@@ -2535,14 +2535,8 @@ asmcomp/deadcode.cmx : \
 asmcomp/deadcode.cmi : \
     asmcomp/mach.cmi
 asmcomp/emit.cmo : \
-    asmcomp/x86_proc.cmi \
-    asmcomp/x86_masm.cmi \
-    asmcomp/x86_gas.cmi \
-    asmcomp/x86_dsl.cmi \
-    asmcomp/x86_ast.cmi \
     asmcomp/reg.cmi \
     asmcomp/proc.cmi \
-    utils/numbers.cmi \
     utils/misc.cmi \
     asmcomp/mach.cmi \
     asmcomp/linear.cmi \
@@ -2558,14 +2552,8 @@ asmcomp/emit.cmo : \
     asmcomp/arch.cmo \
     asmcomp/emit.cmi
 asmcomp/emit.cmx : \
-    asmcomp/x86_proc.cmx \
-    asmcomp/x86_masm.cmx \
-    asmcomp/x86_gas.cmx \
-    asmcomp/x86_dsl.cmx \
-    asmcomp/x86_ast.cmi \
     asmcomp/reg.cmx \
     asmcomp/proc.cmx \
-    utils/numbers.cmx \
     utils/misc.cmx \
     asmcomp/mach.cmx \
     asmcomp/linear.cmx \
@@ -2800,21 +2788,21 @@ asmcomp/printmach.cmi : \
     asmcomp/reg.cmi \
     asmcomp/mach.cmi
 asmcomp/proc.cmo : \
-    asmcomp/x86_proc.cmi \
     asmcomp/reg.cmi \
     utils/misc.cmi \
     asmcomp/mach.cmi \
     utils/config.cmi \
     asmcomp/cmm.cmi \
+    utils/ccomp.cmi \
     asmcomp/arch.cmo \
     asmcomp/proc.cmi
 asmcomp/proc.cmx : \
-    asmcomp/x86_proc.cmx \
     asmcomp/reg.cmx \
     utils/misc.cmx \
     asmcomp/mach.cmx \
     utils/config.cmx \
     asmcomp/cmm.cmx \
+    utils/ccomp.cmx \
     asmcomp/arch.cmx \
     asmcomp/proc.cmi
 asmcomp/proc.cmi : \
@@ -2835,18 +2823,10 @@ asmcomp/reg.cmi : \
 asmcomp/reload.cmo : \
     asmcomp/reloadgen.cmi \
     asmcomp/reg.cmi \
-    asmcomp/mach.cmi \
-    asmcomp/cmm.cmi \
-    utils/clflags.cmi \
-    asmcomp/arch.cmo \
     asmcomp/reload.cmi
 asmcomp/reload.cmx : \
     asmcomp/reloadgen.cmx \
     asmcomp/reg.cmx \
-    asmcomp/mach.cmx \
-    asmcomp/cmm.cmx \
-    utils/clflags.cmx \
-    asmcomp/arch.cmx \
     asmcomp/reload.cmi
 asmcomp/reload.cmi : \
     asmcomp/mach.cmi
@@ -2931,7 +2911,7 @@ asmcomp/selectgen.cmi : \
     asmcomp/arch.cmo
 asmcomp/selection.cmo : \
     asmcomp/selectgen.cmi \
-    asmcomp/proc.cmi \
+    asmcomp/reg.cmi \
     asmcomp/mach.cmi \
     asmcomp/cmm.cmi \
     utils/clflags.cmi \
@@ -2939,7 +2919,7 @@ asmcomp/selection.cmo : \
     asmcomp/selection.cmi
 asmcomp/selection.cmx : \
     asmcomp/selectgen.cmx \
-    asmcomp/proc.cmx \
+    asmcomp/reg.cmx \
     asmcomp/mach.cmx \
     asmcomp/cmm.cmx \
     utils/clflags.cmx \
@@ -6278,8 +6258,6 @@ toplevel/trace.cmi : \
     typing/path.cmi \
     parsing/longident.cmi \
     typing/env.cmi
-toplevel/byte/topdirs.cmi : \
-    parsing/longident.cmi
 toplevel/byte/topeval.cmo : \
     utils/warnings.cmi \
     typing/types.cmi \
@@ -6353,20 +6331,11 @@ toplevel/byte/topeval.cmx : \
 toplevel/byte/topeval.cmi : \
     toplevel/topcommon.cmi \
     parsing/parsetree.cmi
-toplevel/byte/toploop.cmi : \
-    utils/warnings.cmi \
-    typing/types.cmi \
-    typing/path.cmi \
-    parsing/parsetree.cmi \
-    typing/outcometree.cmi \
-    parsing/longident.cmi \
-    parsing/location.cmi \
-    typing/env.cmi
 toplevel/byte/topmain.cmo : \
     toplevel/byte/trace.cmi \
-    toplevel/byte/toploop.cmi \
+    toplevel/toploop.cmi \
     toplevel/byte/topeval.cmi \
-    toplevel/byte/topdirs.cmi \
+    toplevel/topdirs.cmi \
     toplevel/topcommon.cmi \
     typing/printtyp.cmi \
     typing/path.cmi \
@@ -6381,9 +6350,9 @@ toplevel/byte/topmain.cmo : \
     toplevel/byte/topmain.cmi
 toplevel/byte/topmain.cmx : \
     toplevel/byte/trace.cmx \
-    toplevel/byte/toploop.cmi \
+    toplevel/toploop.cmx \
     toplevel/byte/topeval.cmx \
-    toplevel/byte/topdirs.cmi \
+    toplevel/topdirs.cmx \
     toplevel/topcommon.cmx \
     typing/printtyp.cmx \
     typing/path.cmx \
