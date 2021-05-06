@@ -581,8 +581,10 @@ let emit_instr env fallthrough i =
             I.fstp (addressing addr REAL8 i 1)
           end
       end
-  | Lop(Ipoll _) ->
-    ()
+  | Lop(Ipoll { return_label }) ->
+    match return_label with
+    None -> ()
+    | Some lbl -> I.jmp lbl
   | Lop(Ialloc { bytes = n; dbginfo }) ->
       if env.f.fun_fast then begin
         load_domain_state ebx;
