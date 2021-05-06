@@ -270,12 +270,12 @@ let destroyed_at_reloadretaddr = [| |]
 
 let safe_register_pressure = function
   | Iextcall _ -> 7
-  | Ialloc _ -> 22
+  | Ialloc _ | Ipoll _ -> 22
   | _ -> 23
 
 let max_register_pressure = function
   | Iextcall _ -> [| 7; 8 |]  (* 7 integer callee-saves, 8 FP callee-saves *)
-  | Ialloc _ -> [| 22; 32 |]
+  | Ialloc _ | Ipoll _ -> [| 22; 32 |]
   | Iintoffloat | Ifloatofint
   | Iload(Single, _) | Istore(Single, _, _) -> [| 23; 31 |]
   | _ -> [| 23; 32 |]
