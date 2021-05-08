@@ -191,7 +191,17 @@ let instrument_body_with_polls (rec_handlers : int list) (i : Mach.instruction)
   in
   instrument_body [] i
 
-let instrument_fundecl ~future_funcnames (i : Mach.fundecl) : Mach.fundecl =
-  let f = i.fun_body in
-  let rec_handlers = find_rec_handlers ~future_funcnames f in
-  { i with fun_body = instrument_body_with_polls rec_handlers f }
+  let contains_poll instr =
+    let poll = ref false in
+    Mach.instr_iter
+       (fun i -> match i.desc with Iop (Ipoll _) -> poll := true | _ -> ())
+       instr;
+    !poll
+
+
+  let instrument_fundecl ~future_funcnames (i : Mach.fundecl) : Mach.fundecl =
+    let f = i.fun_body in
+    let rec_handlers = find_rec_handlers ~future_funcnames f in
+    let new_body = instrument_body_with_polls rec_handlers f in
+    let new_contains_calls = i.fun_contains_calls || contains_poll new_body in
+    { i with fun_body = new_body; fun_contains_calls = new_contains_calls }
