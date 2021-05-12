@@ -18,9 +18,13 @@
 #include <stdlib.h>
 #include <time.h>
 
+/* This stub isn't needed for msvc32, since it's already in asmgen_i386nt.asm */
+#if !defined(_MSC_VER) || !defined(_M_IX86)
 void caml_call_gc()
 {
+
 }
+#endif
 
 void caml_ml_array_bound_error(void)
 {
