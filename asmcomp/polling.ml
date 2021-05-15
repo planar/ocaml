@@ -64,7 +64,8 @@ let requires_prologue_poll ~future_funcnames (f : Mach.instruction) : bool =
       (check_path body) || (check_path handler) || (check_path i.next)
   | Iop (Itailcall_ind) -> true
   | Iop (Itailcall_imm { func; _ }) ->
-    if (String.Set.mem func future_funcnames) || is_assume_suppressed_poll_fun func then
+    if (String.Set.mem func future_funcnames)
+        || is_assume_suppressed_poll_fun func then
       (* this means we have a call to a function that might be a self call
          or a call to a future function (which won't have a poll) *)
       true
