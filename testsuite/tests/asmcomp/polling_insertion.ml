@@ -24,23 +24,29 @@
 external request_minor_gc : unit -> unit = "request_minor_gc"
 external minor_gcs : unit -> int = "minor_gcs"
 
-(* This function tests that polls are added to the entry point of loops *)
+(* This function tests that polls are added to loops *)
 let polls_added_to_loops () =
   let minors_before = minor_gcs () in
   request_minor_gc ();
   for a = 0 to 1 do
-    let minors_now = minor_gcs () in
-    (* Poll is at loop entry *)
-    assert (minors_before < minors_now)
-  done
-
+    ignore (Sys.opaque_identity 42)
+  done;
+  let minors_now = minor_gcs () in
+  assert (minors_before < minors_now)
 
 (* This next pair of functions test that polls are added to the prologue
    of a function. We need a loop in this function to avoid the poll getting
    removed by the leaf function optimisation *)
+(* XL: these tests don't match the comments above and below.
+   Also their names are misleading: two of these functions are expected to
+   have NO added polls *)
+
 let func_with_added_poll_because_loop () =
-  (* the loop here means this is not treated as a leaf *)
-  for a = 0 to Sys.opaque_identity(0) do
+  (* This function looks like it does not contains calls,
+     but a poll point is inserted, adding a call. *)
+  (* We do two loop iterations so that the poll is triggered whether
+     in poll-at-top or poll-at-bottom mode. *)
+  for a = 0 to Sys.opaque_identity(1) do
     ignore (Sys.opaque_identity 42)
   done
   [@@inline never]
@@ -68,7 +74,7 @@ let polls_added_to_functions () =
   request_minor_gc ();
   func_with_added_poll_because_loop ();
   let minors_now = minor_gcs () in
-  assert (minors_before = minors_now);
+  assert (minors_before < minors_now);
 
   ignore(Sys.opaque_identity(ref 41));
   let minors_before = minor_gcs () in

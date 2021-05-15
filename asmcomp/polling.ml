@@ -2,10 +2,11 @@
 (*                                                                        *)
 (*                                 OCaml                                  *)
 (*                                                                        *)
-(*                Xavier Leroy, Collège de France                         *)
+(*        Xavier Leroy and Damien Doligez, projet Cambium, INRIA Paris    *)
 (*                Damien Doligez, Inria                                   *)
 (*                                                                        *)
-(*   Copyright 2021 Collège de France and Inria                           *)
+(*   Copyright 2021 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
 (*                                                                        *)
 (*   All rights reserved.  This file is distributed under the terms of    *)
 (*   the GNU Lesser General Public License version 2.1, with the          *)
@@ -16,6 +17,7 @@
 open Mach
 
 module String = Misc.Stdlib.String
+module IntSet = Set.Make(Int)
 
 (* replace with starts_with when it arrives *)
 let isprefix s1 s2 =
@@ -30,15 +32,11 @@ let is_assume_suppressed_poll_fun s =
    at every loop iteration. *)
 
 (* The result of the analysis is a mapping from handlers H
-   (= loop heads) to Booleans b and polling decisions.
+   (= loop heads) to Booleans b.
 
    b is true if every path starting from H goes through an Ialloc,
    Ipoll, Ireturn, Itailcall_ind or Itailcall_imm instruction.
    In this case, we say that H is "safe".
-   b is also true if we decide to insert a poll at the head of H.
-
-   (Iraise is treated like Ireturn if not handled locally, or like
-    a branch to the nearest enclosing exception handler.)
 
    b is false, therefore, if starting from H we can loop infinitely
    without crossing an Ialloc or Ipoll instruction.
@@ -53,86 +51,28 @@ let is_assume_suppressed_poll_fun s =
    TRANSF(all other operations, x) = x
 *)
 
-(* We modify the code during the analysis in the following way:
-   As soon as we find a recursive catch with some unsafe handlers
-   we mark one of them for poll insertion, then we resume the analysis
-   to determine whether there are still some unsafe handlers.
-
-   Note that this means the analysis must return true in the end because
-   it will have inserted polls in all unsafe loops.
-*)
-
-type handler_status = AddPoll | Polls | MayLoop
+module PolledLoopsAnalysis = Dataflow.Backward(struct
+  type t = bool
+  let bot = false
+  let join = (&&)
+  let lessequal a b = (not a) || b
+end)
 
 let polled_loops_analysis funbody =
-  let handlers : (int, handler_status) Hashtbl.t = Hashtbl.create 20 in
-  let get_handler n =
-    match Hashtbl.find_opt handlers n with
-    | Some (AddPoll | Polls) -> true
-    | Some (MayLoop) | None -> false
-  in
-  let set_handler n b =
-    match Hashtbl.find_opt handlers n with
-    | Some AddPoll -> ()
-    | _ -> Hashtbl.replace handlers n (if b then Polls else MayLoop)
-  in
-  let set_add_poll n = Hashtbl.replace handlers n AddPoll in
-  let get_add_poll n =
-    match Hashtbl.find_opt handlers n with
-    | Some AddPoll -> true
-    | _ -> false
-  in
-  let rec before i end_ exn =
+  let transfer i ~next ~exn =
     match i.desc with
-    | Iend -> end_
-    | Iop (Ialloc _ | Ipoll _ | Itailcall_ind | Itailcall_imm _) -> true
-    | Iop (Icall_ind | Icall_imm _) ->
-        exn && before i.next end_ exn
+    | Iend -> next
+    | Iop (Ialloc _ | Ipoll _) -> true
+    | Iop (Itailcall_ind | Itailcall_imm _) -> true
     | Iop op ->
         if operation_can_raise op
-        then exn && before i.next end_ exn
-        else before i.next end_ exn
+        then next && exn
+        else next
     | Ireturn -> true
-    | Iifthenelse(_, ifso, ifnot) ->
-        let join = before i.next end_ exn in
-        before ifso join exn && before ifnot join exn
-    | Iswitch(_, branches) ->
-        let join = before i.next end_ exn in
-        Array.for_all (fun i -> before i join exn) branches
-    | Icatch (Cmm.Nonrecursive, handlers, body) ->
-        let join = before i.next end_ exn in
-        List.iter
-          (fun (n, h) -> set_handler n (before h join exn))
-          handlers;
-        before body join exn
-    | Icatch (Cmm.Recursive, handlers, body) ->
-        let join = before i.next end_ exn in
-        let update changed (n, h) =
-          if get_add_poll n then changed else begin
-            let b0 = get_handler n in
-            let b1 = before h join exn in
-            if b1 = b0 then changed else (set_handler n b1; true)
-          end
-        in
-        let rec loop () =
-          while List.fold_left update false handlers do () done;
-          match List.find_opt (fun (n, _) -> not (get_handler n)) handlers with
-          | None -> ()
-          | Some (n, _) -> set_add_poll n; loop ()
-        in
-        loop ();
-        before body join exn
-    | Iexit n ->
-        get_handler n
-    | Itrywith(body, handler) ->
-        let join = before i.next end_ exn in
-        before body join (before handler join exn)
-    | Iraise _ ->
-        exn
+    | Iifthenelse _ | Iswitch _ | Icatch _ | Iexit _ | Itrywith _ -> next
+    | Iraise _ -> exn
   in
-  let _r = before funbody true true in
-  assert _r;
-  get_add_poll
+    snd (PolledLoopsAnalysis.analyze ~exnescape:true ~transfer funbody)
 
 (* Detection of functions that can loop via a tail-call without going
    through a poll point. *)
@@ -157,92 +97,94 @@ let polled_loops_analysis funbody =
    TRANSF(all other operations, x) = x
 *)
 
+module PTRCAnalysis = Dataflow.Backward(struct
+  type t = bool
+  let bot = false
+  let join = (||)
+  let lessequal a b = (not a) || b
+end)
+
 let potentially_recursive_tailcall ~fwd_func funbody =
-  let handlers : (int, bool) Hashtbl.t = Hashtbl.create 20 in
-  let get_handler n =
-    match Hashtbl.find_opt handlers n with Some b -> b | None -> false in
-  let set_handler n b =
-    Hashtbl.replace handlers n b in
-  let rec before i end_ exn =
+  let transfer i ~next ~exn =
     match i.desc with
-    | Iend -> end_
+    | Iend -> next
     | Iop (Ialloc _ | Ipoll _) -> false
     | Iop (Itailcall_ind) -> true
     | Iop (Itailcall_imm { func }) ->
         String.Set.mem func fwd_func || is_assume_suppressed_poll_fun func
     | Iop op ->
         if operation_can_raise op
-        then exn || before i.next end_ exn
-        else before i.next end_ exn
+        then next || exn
+        else next
     | Ireturn -> false
-    | Iifthenelse(_, ifso, ifnot) ->
-        let join = before i.next end_ exn in
-        before ifso join exn || before ifnot join exn
-    | Iswitch(_, branches) ->
-        let join = before i.next end_ exn in
-        Array.exists (fun i -> before i join exn) branches
-    | Icatch (Cmm.Nonrecursive, handlers, body) ->
-        let join = before i.next end_ exn in
-        List.iter
-          (fun (n, h) -> set_handler n (before h join exn))
-          handlers;
-        before body join exn
-    | Icatch (Cmm.Recursive, handlers, body) ->
-        let join = before i.next end_ exn in
-        let update changed (n, h) =
-          let b0 = get_handler n in
-          let b1 = before h join exn in
-          if b1 = b0 then changed else (set_handler n b1; true) in
-        while List.fold_left update false handlers do () done;
-        before body join exn
-    | Iexit n ->
-        get_handler n
-    | Itrywith(body, handler) ->
-        let join = before i.next end_ exn in
-        before body join (before handler join exn)
-    | Iraise _ ->
-        exn
+    | Iifthenelse _ | Iswitch _ | Icatch _ | Iexit _ | Itrywith _ -> next
+    | Iraise _ -> exn
   in
-  before funbody false false
+    fst (PTRCAnalysis.analyze ~transfer funbody)
 
-(* Given the handlers in scope without intervening allocation,
-   add polls before unguarded backwards edges,
-   starting from Mach instruction [i] *)
-let instr_body handler_needs_poll i =
-  let add_poll n i =
-    if handler_needs_poll n then
-      Mach.instr_cons (Iop (Ipoll { return_label = None })) [||] [||] i
-    else
-      i
-  in
-  let rec instr i =
+(* Given the result of the analysis of recursive handlers,
+   add polls to make sure that every loop polls or allocate or ...
+   Two strategies are supported for adding polls:
+ - if [poll_location] is [At_top], [Ipoll] instructions are added to
+   the beginning of every recursive handler that needs extra polling;
+ - if [poll_location] is [At_bottom], [Ipoll] instructions are added
+   before unguarded back edges ([Iexit] instructions that go back
+   to a recursive handler that needs extra polling).
+*)
+
+type poll_location = At_top | At_bottom
+let poll_location = At_bottom
+
+let add_poll i =
+  Mach.instr_cons (Iop (Ipoll { return_label = None })) [||] [||] i
+
+let instr_body handler_safe i =
+  (* [ube] (unguarded back edges) is the set of recursive handler labels
+     that need extra polling. *)
+  let add_unsafe_handler ube (k, _) =
+    if handler_safe k then ube else IntSet.add k ube in
+  let rec instr ube i =
     match i.desc with
     | Iifthenelse (test, i0, i1) ->
       { i with
-        desc = Iifthenelse (test, instr i0, instr i1);
-        next = instr i.next;
+        desc = Iifthenelse (test, instr ube i0, instr ube i1);
+        next = instr ube i.next;
       }
     | Iswitch (index, cases) ->
       { i with
-        desc = Iswitch (index, Array.map instr cases);
-        next = instr i.next;
+        desc = Iswitch (index, Array.map (instr ube) cases);
+        next = instr ube i.next;
       }
     | Icatch (rc, hdl, body) ->
+      let ube' =
+        if rc = Cmm.Recursive && poll_location = At_bottom
+        then List.fold_left add_unsafe_handler ube hdl
+        else ube in
+      let instr_handler (k, i0) =
+        let i1 = instr ube' i0 in
+        if rc = Cmm.Recursive && poll_location = At_top && not (handler_safe k)
+        then (k, add_poll i1)
+        else (k, i1) in
       { i with
         desc = Icatch (rc,
-                       List.map (fun (n, i0) -> (n, add_poll n (instr i0))) hdl,
-                       instr body);
-        next = instr i.next;
+                       List.map instr_handler hdl,
+                       instr ube body);
+        next = instr ube i.next;
       }
+    | Iexit k ->
+        if poll_location = At_bottom && IntSet.mem k ube
+        then add_poll i
+        else i
     | Itrywith (body, hdl) ->
       { i with
-        desc = Itrywith (instr body, instr hdl);
-        next = instr i.next;
+        desc = Itrywith (instr ube body, instr ube hdl);
+        next = instr ube i.next;
       }
-    | Iend | Ireturn | Iraise _ | Iexit _ -> i
-    | Iop _ -> { i with next = instr i.next }
+    | Iend | Ireturn | Iraise _ -> i
+    | Iop _ -> { i with next = instr ube i.next }
+
   in
-  instr i
+  instr IntSet.empty i
 
 let contains_poll instr =
   let poll = ref false in
