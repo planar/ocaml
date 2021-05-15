@@ -209,6 +209,7 @@ ASMCOMP = \
   asmcomp/polling.cmo \
   asmcomp/selectgen.cmo \
   asmcomp/selection.cmo \
+  asmcomp/dataflow.cmo \
   asmcomp/comballoc.cmo \
   asmcomp/CSEgen.cmo \
   asmcomp/CSE.cmo \
