@@ -14,8 +14,8 @@
    function returns the number of minor collections so far without allocating.
 
    ignore(Sys.opaque_identity(ref 41)) is used wherever we want to do an
-   allocation in order to use some minor heap in order for the minor
-   collections stat to be incremented.
+   allocation in order to use some minor heap so the minor collections stat is
+   incremented.
 
    ignore(Sys.opaque_identity(ref 42)) is used wherever we want an allocation
    for the purposes of testing whether a poll would be elided or not.
@@ -299,6 +299,19 @@ let polls_added_before_raises () =
       let minors_after = minor_gcs () in
         assert(minors_before+1 = minors_after)
 
+let[@inline never][@local never] app minors_before f x y =
+  let minors_after_prologue = minor_gcs () in
+    assert(minors_before+1 = minors_after_prologue);
+    request_minor_gc ();
+    f x y
+
+let polls_not_added_in_caml_apply () =
+  let minors_before = minor_gcs() in
+    request_minor_gc();
+    ignore(Sys.opaque_identity(app minors_before (fun x y -> x * y) 5 4));
+    let minors_after = minor_gcs() in
+      assert(minors_before+1 = minors_after)
+
 let () =
   ignore(Sys.opaque_identity(ref 41));
   polls_added_to_loops (); (* relies on there being some minor heap usage *)
@@ -331,4 +344,7 @@ let () =
   polls_not_added_to_leaf_functions ();
 
   ignore(Sys.opaque_identity(ref 41));
-  polls_added_before_raises ()
+  polls_added_before_raises ();
+
+  ignore(Sys.opaque_identity(ref 41));
+  polls_not_added_in_caml_apply ()

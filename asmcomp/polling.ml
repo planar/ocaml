@@ -16,6 +16,14 @@ open Mach
 
 module String = Misc.Stdlib.String
 
+(* replace with starts_with when it arrives *)
+let isprefix s1 s2 =
+  String.length s1 <= String.length s2
+  && String.sub s2 0 (String.length s1) = s1
+
+let is_assume_suppressed_poll_fun s =
+  isprefix "caml_apply" s
+
 (* Check a sequence of instructions from [f] and return whether
    they poll (via an alloc or raising an exception) *)
 let rec path_polls (f : Mach.instruction) : bool =
@@ -56,7 +64,7 @@ let requires_prologue_poll ~future_funcnames (f : Mach.instruction) : bool =
       (check_path body) || (check_path handler) || (check_path i.next)
   | Iop (Itailcall_ind) -> true
   | Iop (Itailcall_imm { func; _ }) ->
-    if (String.Set.mem func future_funcnames) then
+    if (String.Set.mem func future_funcnames) || is_assume_suppressed_poll_fun func then
       (* this means we have a call to a function that might be a self call
          or a call to a future function (which won't have a poll) *)
       true
@@ -198,10 +206,12 @@ let instrument_body_with_polls (rec_handlers : int list) (i : Mach.instruction)
        instr;
     !poll
 
-
   let instrument_fundecl ~future_funcnames (i : Mach.fundecl) : Mach.fundecl =
-    let f = i.fun_body in
-    let rec_handlers = find_rec_handlers ~future_funcnames f in
-    let new_body = instrument_body_with_polls rec_handlers f in
-    let new_contains_calls = i.fun_contains_calls || contains_poll new_body in
-    { i with fun_body = new_body; fun_contains_calls = new_contains_calls }
+    if i.fun_suppress_polls then
+      i
+    else
+      let f = i.fun_body in
+      let rec_handlers = find_rec_handlers ~future_funcnames f in
+      let new_body = instrument_body_with_polls rec_handlers f in
+      let new_contains_calls = i.fun_contains_calls || contains_poll new_body in
+      { i with fun_body = new_body; fun_contains_calls = new_contains_calls }

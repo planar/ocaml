@@ -171,8 +171,6 @@ let compile_data dl =
   ++ save_data
   ++ emit_data
 
-(* caml_apply, at end of list, don't add polls in caml_apply via flag *)
-
 let compile_phrases ~ppf_dump ps =
   let funcnames =
     List.fold_left (fun s p ->
