@@ -133,7 +133,7 @@ let potentially_recursive_tailcall ~fwd_func funbody =
 *)
 
 type poll_location = At_top | At_bottom
-let poll_location = At_bottom
+let poll_location = At_top
 
 let add_poll i =
   Mach.instr_cons (Iop (Ipoll { return_label = None })) [||] [||] i
