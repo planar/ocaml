@@ -64,6 +64,8 @@ static double p_backlog = 0.0; /* backlog for the gc speedup parameter */
 
 int caml_gc_subphase;     /* Subphase_{mark_roots,mark_main,mark_final} */
 
+static uintnat work_done = 0;
+
 /**
    Ephemerons:
    During mark phase the list caml_ephe_list_head of ephemerons
@@ -386,6 +388,7 @@ static void mark_slice (intnat work)
 
   caml_gc_message (0x40, "Marking %"ARCH_INTNAT_PRINTF_FORMAT"d words\n", work);
   caml_gc_message (0x40, "Subphase = %d\n", caml_gc_subphase);
+  work_done += work;
   gray_vals_ptr = gray_vals_cur;
   v = current_value;
   start = current_index;
@@ -514,6 +517,9 @@ static void mark_slice (intnat work)
         /** The set of unreachable value will not change anymore for
             this cycle. Start clean phase. */
         CAML_EV_BEGIN(EV_MAJOR_MARK_FINAL);
+        work_done -= work;
+        caml_gc_message (0x800, "end of marking, work done = %lu", work_done);
+        work_done = 0;
         caml_gc_phase = Phase_clean;
         caml_final_update_clean_phase ();
         caml_memprof_update_clean_phase ();
@@ -535,6 +541,7 @@ static void mark_slice (intnat work)
   gray_vals_cur = gray_vals_ptr;
   current_value = v;
   current_index = start;
+  work_done -= work;
   CAML_EV_COUNTER(EV_C_MAJOR_MARK_SLICE_FIELDS, slice_fields);
   CAML_EV_COUNTER(EV_C_MAJOR_MARK_SLICE_POINTERS, slice_pointers);
 }
@@ -546,6 +553,7 @@ static void clean_slice (intnat work)
 
   caml_gc_message (0x40, "Cleaning %"
                    ARCH_INTNAT_PRINTF_FORMAT "d words\n", work);
+  work_done += work;
   while (work > 0){
     v = *ephes_to_check;
     if (v != (value) NULL){
@@ -561,10 +569,14 @@ static void clean_slice (intnat work)
     }else{ /* End of list reached */
       /* Phase_clean is done. */
       /* Initialise the sweep phase. */
+      work_done -= work;
+      caml_gc_message (0x800, "end of cleaning, work done = %lu", work_done);
+      work_done = 0;
       init_sweep_phase();
       work = 0;
     }
   }
+  work_done -= work;
 }
 
 static void sweep_slice (intnat work)
@@ -574,6 +586,7 @@ static void sweep_slice (intnat work)
 
   caml_gc_message (0x40, "Sweeping %"
                    ARCH_INTNAT_PRINTF_FORMAT "d words\n", work);
+  work_done += work;
   while (work > 0){
     if (caml_gc_sweep_hp < limit){
       hp = caml_gc_sweep_hp;
@@ -599,6 +612,9 @@ static void sweep_slice (intnat work)
       if (chunk == NULL){
         /* Sweeping is done. */
         ++ Caml_state->stat_major_collections;
+        work_done -= work;
+        caml_gc_message (0x800, "end of sweeping, work done = %lu", work_done);
+        work_done = 0;
         work = 0;
         caml_gc_phase = Phase_idle;
         caml_request_minor_gc ();
@@ -608,6 +624,7 @@ static void sweep_slice (intnat work)
       }
     }
   }
+  work_done -= work;
 }
 
 /* The main entry point for the major GC. Called about once for each
