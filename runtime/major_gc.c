@@ -518,7 +518,7 @@ static void mark_slice (intnat work)
             this cycle. Start clean phase. */
         CAML_EV_BEGIN(EV_MAJOR_MARK_FINAL);
         work_done -= work;
-        caml_gc_message (0x800, "end of marking, work done = %lu", work_done);
+        caml_gc_message (0x800, "end of marking, work done = %lu\n", work_done);
         work_done = 0;
         caml_gc_phase = Phase_clean;
         caml_final_update_clean_phase ();
@@ -570,7 +570,7 @@ static void clean_slice (intnat work)
       /* Phase_clean is done. */
       /* Initialise the sweep phase. */
       work_done -= work;
-      caml_gc_message (0x800, "end of cleaning, work done = %lu", work_done);
+      caml_gc_message (0x800, "end of cleaning, work done = %lu\n", work_done);
       work_done = 0;
       init_sweep_phase();
       work = 0;
@@ -613,7 +613,8 @@ static void sweep_slice (intnat work)
         /* Sweeping is done. */
         ++ Caml_state->stat_major_collections;
         work_done -= work;
-        caml_gc_message (0x800, "end of sweeping, work done = %lu", work_done);
+        caml_gc_message (0x800, "end of sweeping, work done = %lu\n",
+                         work_done);
         work_done = 0;
         work = 0;
         caml_gc_phase = Phase_idle;
