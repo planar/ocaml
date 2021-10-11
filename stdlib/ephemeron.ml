@@ -13,15 +13,59 @@
 (*                                                                        *)
 (**************************************************************************)
 
+[@@@ocaml.warning "-32"]
+
 module type SeededS = sig
-  include Hashtbl.SeededS
+  type key
+  type !'a t
+  val create : ?random (* thwart tools/sync_stdlib_docs *) :bool ->
+               int -> 'a t
+  val clear : 'a t -> unit
+  val reset : 'a t -> unit
+  val copy : 'a t -> 'a t
+  val add : 'a t -> key -> 'a -> unit
+  val remove : 'a t -> key -> unit
+  val find : 'a t -> key -> 'a
+  val find_opt : 'a t -> key -> 'a option (** @since 4.05.0 *)
+
+  val find_all : 'a t -> key -> 'a list
+  val replace : 'a t -> key -> 'a -> unit
+
+  val length : 'a t -> int
+  val stats : 'a t -> Hashtbl.statistics
+
+  val add_seq : 'a t -> (key * 'a) Seq.t -> unit
+  val replace_seq : 'a t -> (key * 'a) Seq.t -> unit
+  val of_seq : (key * 'a) Seq.t -> 'a t
+
   val clean: 'a t -> unit
   val stats_alive: 'a t -> Hashtbl.statistics
     (** same as {!stats} but only count the alive bindings *)
 end
 
 module type S = sig
-  include Hashtbl.S
+  type key
+  type !'a t
+  val create : int -> 'a t
+  val clear : 'a t -> unit
+  val reset : 'a t -> unit
+
+  val copy : 'a t -> 'a t
+  val add : 'a t -> key -> 'a -> unit
+  val remove : 'a t -> key -> unit
+  val find : 'a t -> key -> 'a
+  val find_opt : 'a t -> key -> 'a option
+
+  val find_all : 'a t -> key -> 'a list
+  val replace : 'a t -> key -> 'a -> unit
+
+  val length : 'a t -> int
+  val stats : 'a t -> Hashtbl.statistics
+
+  val add_seq : 'a t -> (key * 'a) Seq.t -> unit
+  val replace_seq : 'a t -> (key * 'a) Seq.t -> unit
+  val of_seq : (key * 'a) Seq.t -> 'a t
+
   val clean: 'a t -> unit
   val stats_alive: 'a t -> Hashtbl.statistics
     (** same as {!stats} but only count the alive bindings *)
@@ -448,6 +492,18 @@ module K1 = struct
   let check_data (t:('k,'d) t) : bool = ObjEph.check_data t
   let blit_data (t1:(_,'d) t) (t2:(_,'d) t) : unit = ObjEph.blit_data t1 t2
 
+  let make key data =
+    let eph = create () in
+    set_key eph key;
+    set_data eph data;
+    eph
+
+  let query eph key =
+    match get_key eph with
+    | None -> None
+    | Some k when k == key -> get_data eph
+    | Some _ -> None
+
   module MakeSeeded (H:Hashtbl.SeededHashedType) =
     GenHashTable.MakeSeeded(struct
       type 'a container = (H.t,'a) t
@@ -528,6 +584,24 @@ module K2 = struct
   let check_data (t:('k1,'k2,'d) t) : bool = ObjEph.check_data t
   let blit_data (t1:(_,_,'d) t) (t2:(_,_,'d) t) : unit = ObjEph.blit_data t1 t2
 
+  let make key1 key2 data =
+    let eph = create () in
+    set_key1 eph key1;
+    set_key2 eph key2;
+    set_data eph data;
+    eph
+
+  let query eph key1 key2 =
+    match get_key1 eph with
+    | None -> None
+    | Some k when k == key1 ->
+        begin match get_key2 eph with
+        | None -> None
+        | Some k when k == key2 -> get_data eph
+        | Some _ -> None
+        end
+    | Some _ -> None
+
   module MakeSeeded
       (H1:Hashtbl.SeededHashedType)
       (H2:Hashtbl.SeededHashedType) =
@@ -605,6 +679,26 @@ module Kn = struct
   let unset_data (t:('k,'d) t) : unit = ObjEph.unset_data t
   let check_data (t:('k,'d) t) : bool = ObjEph.check_data t
   let blit_data (t1:(_,'d) t) (t2:(_,'d) t) : unit = ObjEph.blit_data t1 t2
+
+  let make keys data =
+    let l = Array.length keys in
+    let eph = create l in
+    for i = 0 to l - 1 do set_key eph i keys.(i) done;
+    set_data eph data;
+    eph
+
+  let query eph keys =
+    let l = length eph in
+    try
+      if l <> Array.length keys then raise Exit;
+      for i = 0 to l - 1 do
+        match get_key eph i with
+        | None -> raise Exit
+        | Some k when k == keys.(i) -> ()
+        | Some _ -> raise Exit
+      done;
+      get_data eph
+    with Exit -> None
 
   module MakeSeeded (H:Hashtbl.SeededHashedType) =
     GenHashTable.MakeSeeded(struct
