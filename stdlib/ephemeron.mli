@@ -67,22 +67,38 @@
 *)
 
 module type S = sig
-  (** Propose the same interface as usual hash table. However since
-      the bindings are weak, even if [mem h k] is true, a subsequent
-      [find h k] may raise [Not_found] because the garbage collector
-      can run between the two.
 
-      Moreover, the table shouldn't be modified during a call to [iter].
-      Use [filter_map_inplace] in this case.
-  *)
+  (* A subset of the interface of normal hash tables *)
 
-  include Hashtbl.S
+  type key
+  type !'a t
+  val create : int -> 'a t
+  val clear : 'a t -> unit
+  val reset : 'a t -> unit
+
+  val copy : 'a t -> 'a t
+  val add : 'a t -> key -> 'a -> unit
+  val remove : 'a t -> key -> unit
+  val find : 'a t -> key -> 'a
+  val find_opt : 'a t -> key -> 'a option
+
+  val find_all : 'a t -> key -> 'a list
+  val replace : 'a t -> key -> 'a -> unit
+
+  val length : 'a t -> int
+  val stats : 'a t -> Hashtbl.statistics
+
+  val add_seq : 'a t -> (key * 'a) Seq.t -> unit
+  val replace_seq : 'a t -> (key * 'a) Seq.t -> unit
+  val of_seq : (key * 'a) Seq.t -> 'a t
+
+  (* Additional functions, deprecated *)
 
   val clean: 'a t -> unit
-  (** remove all dead bindings. Done automatically during automatic resizing. *)
+  (** Do nothing. For backward compatibility only *)
 
   val stats_alive: 'a t -> Hashtbl.statistics
-  (** same as {!Hashtbl.SeededS.stats} but only count the alive bindings *)
+  (** same as {!Hashtbl.SeededS.stats}. For backward compatibility only. *)
 end
 (** The output signature of the functor {!K1.Make} and {!K2.Make}.
     These hash tables are weak in the keys. If all the keys of a binding are
@@ -91,12 +107,35 @@ end
 *)
 
 module type SeededS = sig
-  include Hashtbl.SeededS
-  val clean: 'a t -> unit
-  (** remove all dead bindings. Done automatically during automatic resizing. *)
 
-  val stats_alive: 'a t -> Hashtbl.statistics
-  (** same as {!Hashtbl.SeededS.stats} but only count the alive bindings *)
+  (* A subset of the interface of normal hash tables *)
+  type key
+  type !'a t
+  val create : ?random (* thwart tools/sync_stdlib_docs *) :bool ->
+               int -> 'a t
+  val clear : 'a t -> unit
+  val reset : 'a t -> unit
+  val copy : 'a t -> 'a t
+  val add : 'a t -> key -> 'a -> unit
+  val remove : 'a t -> key -> unit
+  val find : 'a t -> key -> 'a
+  val find_opt : 'a t -> key -> 'a option (** @since 4.05.0 *)
+
+  val find_all : 'a t -> key -> 'a list
+  val replace : 'a t -> key -> 'a -> unit
+
+  val length : 'a t -> int
+  val stats : 'a t -> Hashtbl.statistics
+
+  val add_seq : 'a t -> (key * 'a) Seq.t -> unit
+  val replace_seq : 'a t -> (key * 'a) Seq.t -> unit
+  val of_seq : (key * 'a) Seq.t -> 'a t
+
+  val clean: 'a t -> unit  (* XXX Deprecated *)
+  (** Do nothing. For backward compatibility only *)
+
+  val stats_alive: 'a t -> Hashtbl.statistics  (* XXX Deprecated *)
+  (** same as {!Hashtbl.SeededS.stats}. For backward compatibility only. *)
 end
 (** The output signature of the functor {!K1.MakeSeeded} and {!K2.MakeSeeded}.
 *)
@@ -104,78 +143,13 @@ end
 module K1 : sig
   type ('k,'d) t (** an ephemeron with one key *)
 
-  val create: unit -> ('k,'d) t
-  (** [Ephemeron.K1.create ()] creates an ephemeron with one key. The
-      data and the key are empty *)
+  val make : 'k -> 'd -> ('k,'d) t
+  (** [Ephemeron.K1.make k d] creates an ephemeron with key [k] and data [d]. *)
 
-  val get_key: ('k,'d) t -> 'k option
-  (** [Ephemeron.K1.get_key eph] returns [None] if the key of [eph] is
-      empty, [Some x] (where [x] is the key) if it is full. *)
-
-  val get_key_copy: ('k,'d) t -> 'k option
-  (** [Ephemeron.K1.get_key_copy eph] returns [None] if the key of [eph] is
-      empty, [Some x] (where [x] is a (shallow) copy of the key) if
-      it is full. This function has the same GC friendliness as {!Weak.get_copy}
-  *)
-
-  val set_key: ('k,'d) t -> 'k -> unit
-  (** [Ephemeron.K1.set_key eph el] sets the key of [eph] to be a
-      (full) key to [el]
-  *)
-
-  val unset_key: ('k,'d) t -> unit
-  (** [Ephemeron.K1.unset_key eph el] sets the key of [eph] to be an
-      empty key. Since there is only one key, the ephemeron starts
-      behaving like a reference on the data. *)
-
-  val check_key: ('k,'d) t -> bool
-  (** [Ephemeron.K1.check_key eph] returns [true] if the key of the [eph]
-      is full, [false] if it is empty. Note that even if
-      [Ephemeron.K1.check_key eph] returns [true], a subsequent
-      {!Ephemeron.K1.get_key}[eph] can return [None].
-  *)
-
-
-  val blit_key : ('k,_) t -> ('k,_) t -> unit
-  (** [Ephemeron.K1.blit_key eph1 eph2] sets the key of [eph2] with
-      the key of [eph1]. Contrary to using [Ephemeron.K1.get_key]
-      followed by [Ephemeron.K1.set_key] or [Ephemeon.K1.unset_key]
-      this function does not prevent the incremental GC from erasing
-      the value in its current cycle. *)
-
-  val get_data: ('k,'d) t -> 'd option
-  (** [Ephemeron.K1.get_data eph] returns [None] if the data of [eph] is
-      empty, [Some x] (where [x] is the data) if it is full. *)
-
-  val get_data_copy: ('k,'d) t -> 'd option
-  (** [Ephemeron.K1.get_data_copy eph] returns [None] if the data of [eph] is
-      empty, [Some x] (where [x] is a (shallow) copy of the data) if
-      it is full. This function has the same GC friendliness as {!Weak.get_copy}
-  *)
-
-  val set_data: ('k,'d) t -> 'd -> unit
-  (** [Ephemeron.K1.set_data eph el] sets the data of [eph] to be a
-      (full) data to [el]
-  *)
-
-  val unset_data: ('k,'d) t -> unit
-  (** [Ephemeron.K1.unset_data eph el] sets the key of [eph] to be an
-      empty key. The ephemeron starts behaving like a weak pointer.
-  *)
-
-  val check_data: ('k,'d) t -> bool
-  (** [Ephemeron.K1.check_data eph] returns [true] if the data of the [eph]
-      is full, [false] if it is empty. Note that even if
-      [Ephemeron.K1.check_data eph] returns [true], a subsequent
-      {!Ephemeron.K1.get_data}[eph] can return [None].
-  *)
-
-  val blit_data : (_,'d) t -> (_,'d) t -> unit
-  (** [Ephemeron.K1.blit_data eph1 eph2] sets the data of [eph2] with
-      the data of [eph1]. Contrary to using [Ephemeron.K1.get_data]
-      followed by [Ephemeron.K1.set_data] or [Ephemeon.K1.unset_data]
-      this function does not prevent the incremental GC from erasing
-      the value in its current cycle. *)
+  val query : ('k,'d) t -> 'k -> 'd option
+  (** [Ephemeron.K1.get_data eph key] returns [None] if [key] is not
+      physically equal to the [eph]'s key (or [eph] is empty), and [Some x]
+      (where [x] is the data) if [key] matches. *)
 
   module Make (H:Hashtbl.HashedType) : S with type key = H.t
   (** Functor building an implementation of a weak hash table *)
@@ -187,67 +161,17 @@ module K1 : sig
 end
 
 module K2 : sig
+
   type ('k1,'k2,'d) t (** an ephemeron with two keys *)
 
-  val create: unit -> ('k1,'k2,'d) t
-  (** Same as {!Ephemeron.K1.create} *)
+  val make : 'k1 -> 'k2 -> 'd -> ('k1, 'k2, 'd) t
+  (** [Ephemeron.K2.make k1 k2 d] creates an ephemeron with keys [k1] and [k2]
+      and data [d]. *)
 
-  val get_key1: ('k1,'k2,'d) t -> 'k1 option
-  (** Same as {!Ephemeron.K1.get_key} *)
-
-  val get_key1_copy: ('k1,'k2,'d) t -> 'k1 option
-  (** Same as {!Ephemeron.K1.get_key_copy} *)
-
-  val set_key1: ('k1,'k2,'d) t -> 'k1 -> unit
-  (** Same as {!Ephemeron.K1.set_key} *)
-
-  val unset_key1: ('k1,'k2,'d) t -> unit
-  (** Same as {!Ephemeron.K1.unset_key} *)
-
-  val check_key1: ('k1,'k2,'d) t ->  bool
-  (** Same as {!Ephemeron.K1.check_key} *)
-
-  val get_key2: ('k1,'k2,'d) t -> 'k2 option
-  (** Same as {!Ephemeron.K1.get_key} *)
-
-  val get_key2_copy: ('k1,'k2,'d) t -> 'k2 option
-  (** Same as {!Ephemeron.K1.get_key_copy} *)
-
-  val set_key2: ('k1,'k2,'d) t -> 'k2 -> unit
-  (** Same as {!Ephemeron.K1.set_key} *)
-
-  val unset_key2: ('k1,'k2,'d) t -> unit
-  (** Same as {!Ephemeron.K1.unset_key} *)
-
-  val check_key2: ('k1,'k2,'d) t -> bool
-  (** Same as {!Ephemeron.K1.check_key} *)
-
-  val blit_key1: ('k1,_,_) t -> ('k1,_,_) t -> unit
-  (** Same as {!Ephemeron.K1.blit_key} *)
-
-  val blit_key2: (_,'k2,_) t -> (_,'k2,_) t -> unit
-  (** Same as {!Ephemeron.K1.blit_key} *)
-
-  val blit_key12: ('k1,'k2,_) t -> ('k1,'k2,_) t -> unit
-  (** Same as {!Ephemeron.K1.blit_key} *)
-
-  val get_data: ('k1,'k2,'d) t -> 'd option
-  (** Same as {!Ephemeron.K1.get_data} *)
-
-  val get_data_copy: ('k1,'k2,'d) t -> 'd option
-  (** Same as {!Ephemeron.K1.get_data_copy} *)
-
-  val set_data: ('k1,'k2,'d) t -> 'd -> unit
-  (** Same as {!Ephemeron.K1.set_data} *)
-
-  val unset_data: ('k1,'k2,'d) t -> unit
-  (** Same as {!Ephemeron.K1.unset_data} *)
-
-  val check_data: ('k1,'k2,'d) t -> bool
-  (** Same as {!Ephemeron.K1.check_data} *)
-
-  val blit_data: ('k1,'k2,'d) t -> ('k1,'k2,'d) t -> unit
-  (** Same as {!Ephemeron.K1.blit_data} *)
+  val query : ('k1, 'k2, 'd) t -> 'k1 -> 'k2 -> 'd option
+  (** [Ephemeron.K2.get_data eph key1 key2] returns [None] if [key1] and
+      [key2] are not physically equal to the [eph]'s keys (or [eph] is empty),
+      and [Some x] (where [x] is the data) if the keys match. *)
 
   module Make
       (H1:Hashtbl.HashedType)
@@ -265,47 +189,15 @@ module K2 : sig
 end
 
 module Kn : sig
+
   type ('k,'d) t (** an ephemeron with an arbitrary number of keys
                       of the same type *)
 
-  val create: int -> ('k,'d) t
-  (** Same as {!Ephemeron.K1.create} *)
+  val make : 'k array -> 'd -> ('k, 'd) t
+  (** Similar to {!Ephemeron.K1.create} *)
 
-  val get_key: ('k,'d) t -> int -> 'k option
-  (** Same as {!Ephemeron.K1.get_key} *)
-
-  val get_key_copy: ('k,'d) t -> int -> 'k option
-  (** Same as {!Ephemeron.K1.get_key_copy} *)
-
-  val set_key: ('k,'d) t -> int -> 'k -> unit
-  (** Same as {!Ephemeron.K1.set_key} *)
-
-  val unset_key: ('k,'d) t -> int -> unit
-  (** Same as {!Ephemeron.K1.unset_key} *)
-
-  val check_key: ('k,'d) t -> int ->  bool
-  (** Same as {!Ephemeron.K1.check_key} *)
-
-  val blit_key: ('k,_) t -> int -> ('k,_) t -> int -> int -> unit
-  (** Same as {!Ephemeron.K1.blit_key} *)
-
-  val get_data: ('k,'d) t -> 'd option
-  (** Same as {!Ephemeron.K1.get_data} *)
-
-  val get_data_copy: ('k,'d) t -> 'd option
-  (** Same as {!Ephemeron.K1.get_data_copy} *)
-
-  val set_data: ('k,'d) t -> 'd -> unit
-  (** Same as {!Ephemeron.K1.set_data} *)
-
-  val unset_data: ('k,'d) t -> unit
-  (** Same as {!Ephemeron.K1.unset_data} *)
-
-  val check_data: ('k,'d) t -> bool
-  (** Same as {!Ephemeron.K1.check_data} *)
-
-  val blit_data: ('k,'d) t -> ('k,'d) t -> unit
-  (** Same as {!Ephemeron.K1.blit_data} *)
+  val query : ('k, 'd) t -> 'k array -> 'd option
+  (** Similar to {!Ephemeron.K1.query} *)
 
   module Make
       (H:Hashtbl.HashedType) :
@@ -319,50 +211,4 @@ module Kn : sig
       The seed is similar to the one of {!Hashtbl.MakeSeeded}. *)
 
 end
-
-module GenHashTable: sig
-  (** Define a hash table on generic containers which have a notion of
-      "death" and aliveness. If a binding is dead the hash table can
-      automatically remove it. *)
-
-  type equal =
-  | ETrue | EFalse
-  | EDead (** the container is dead *)
-
-  module MakeSeeded(H:
-  sig
-    type t
-    (** keys *)
-
-    type 'a container
-    (** contains keys and the associated data *)
-
-    val hash: int -> t -> int
-    (** same as {!Hashtbl.SeededHashedType} *)
-
-    val equal: 'a container -> t -> equal
-    (** equality predicate used to compare a key with the one in a
-        container. Can return [EDead] if the keys in the container are
-        dead *)
-
-    val create: t -> 'a -> 'a container
-    (** [create key data] creates a container from
-        some initials keys and one data *)
-
-    val get_key: 'a container -> t option
-    (** [get_key cont] returns the keys if they are all alive *)
-
-    val get_data: 'a container -> 'a option
-    (** [get_data cont] returns the data if it is alive *)
-
-    val set_key_data: 'a container -> t -> 'a -> unit
-    (** [set_key_data cont] modifies the key and data *)
-
-    val check_key: 'a container -> bool
-    (** [check_key cont] checks if all the keys contained in the data
-        are alive *)
-  end) : SeededS with type key = H.t
-  (** Functor building an implementation of an hash table that use the container
-      for keeping the information given *)
-
-end
+(** Emphemerons with arbitrary number of keys of the same type. *)
