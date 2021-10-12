@@ -71,7 +71,7 @@ module type S = sig
   (* A subset of the interface of normal hash tables *)
 
   type key
-  type !'a t
+  type 'a t
   val create : int -> 'a t
   val clear : 'a t -> unit
   val reset : 'a t -> unit
@@ -87,10 +87,6 @@ module type S = sig
 
   val length : 'a t -> int
   val stats : 'a t -> Hashtbl.statistics
-
-  val add_seq : 'a t -> (key * 'a) Seq.t -> unit
-  val replace_seq : 'a t -> (key * 'a) Seq.t -> unit
-  val of_seq : (key * 'a) Seq.t -> 'a t
 
   (* Additional functions, deprecated *)
 
@@ -110,7 +106,7 @@ module type SeededS = sig
 
   (* A subset of the interface of normal hash tables *)
   type key
-  type !'a t
+  type 'a t
   val create : ?random (* thwart tools/sync_stdlib_docs *) :bool ->
                int -> 'a t
   val clear : 'a t -> unit
@@ -126,10 +122,6 @@ module type SeededS = sig
 
   val length : 'a t -> int
   val stats : 'a t -> Hashtbl.statistics
-
-  val add_seq : 'a t -> (key * 'a) Seq.t -> unit
-  val replace_seq : 'a t -> (key * 'a) Seq.t -> unit
-  val of_seq : (key * 'a) Seq.t -> 'a t
 
   val clean: 'a t -> unit  (* XXX Deprecated *)
   (** Do nothing. For backward compatibility only *)

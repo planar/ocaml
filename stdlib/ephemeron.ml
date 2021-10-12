@@ -17,7 +17,7 @@
 
 module type SeededS = sig
   type key
-  type !'a t
+  type 'a t
   val create : ?random (* thwart tools/sync_stdlib_docs *) :bool ->
                int -> 'a t
   val clear : 'a t -> unit
@@ -34,10 +34,6 @@ module type SeededS = sig
   val length : 'a t -> int
   val stats : 'a t -> Hashtbl.statistics
 
-  val add_seq : 'a t -> (key * 'a) Seq.t -> unit
-  val replace_seq : 'a t -> (key * 'a) Seq.t -> unit
-  val of_seq : (key * 'a) Seq.t -> 'a t
-
   val clean: 'a t -> unit
   val stats_alive: 'a t -> Hashtbl.statistics
     (** same as {!stats} but only count the alive bindings *)
@@ -45,7 +41,7 @@ end
 
 module type S = sig
   type key
-  type !'a t
+  type 'a t
   val create : int -> 'a t
   val clear : 'a t -> unit
   val reset : 'a t -> unit
@@ -61,10 +57,6 @@ module type S = sig
 
   val length : 'a t -> int
   val stats : 'a t -> Hashtbl.statistics
-
-  val add_seq : 'a t -> (key * 'a) Seq.t -> unit
-  val replace_seq : 'a t -> (key * 'a) Seq.t -> unit
-  val of_seq : (key * 'a) Seq.t -> 'a t
 
   val clean: 'a t -> unit
   val stats_alive: 'a t -> Hashtbl.statistics
