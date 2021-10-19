@@ -26,7 +26,6 @@ module type SeededS = sig
   val add : 'a t -> key -> 'a -> unit
   val remove : 'a t -> key -> unit
   val find : 'a t -> key -> 'a
-  val find_opt : 'a t -> key -> 'a option (** @since 4.05.0 *)
 
   val find_all : 'a t -> key -> 'a list
   val replace : 'a t -> key -> 'a -> unit
@@ -50,7 +49,6 @@ module type S = sig
   val add : 'a t -> key -> 'a -> unit
   val remove : 'a t -> key -> unit
   val find : 'a t -> key -> 'a
-  val find_opt : 'a t -> key -> 'a option
 
   val find_all : 'a t -> key -> 'a list
   val replace : 'a t -> key -> 'a -> unit
