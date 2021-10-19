@@ -592,7 +592,7 @@ runtime:
 clean::
 	cd byterun; $(MAKE) clean
 	rm -f stdlib/libcamlrun.a
-	rm -f stdlib/caml
+	rm -rf stdlib/caml
 
 alldepend::
 	cd byterun; $(MAKE) depend

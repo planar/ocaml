@@ -314,6 +314,8 @@ case $? in
          "Make sure the C compiler $cc is properly installed.";;
 esac
 
+cc="$cc -Wno-implicit-function-declaration"
+
 # Configure the bytecode compiler
 
 bytecc="$cc"
@@ -340,8 +342,8 @@ TOOLCHAIN="cc"
 # gnu11, which is fine.
 
 case "$ocamlversion" in
-  *+dev*) gcc_warnings="-Wall -Werror";;
-       *) gcc_warnings="-Wall";;
+  *+dev*) gcc_warnings="-Wall -Werror -Wno-implicit-function-declaration";;
+       *) gcc_warnings="-Wall -Wno-implicit-function-declaration";;
 esac
 
 case "$ccfamily" in
