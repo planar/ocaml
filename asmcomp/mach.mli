@@ -54,6 +54,7 @@ type operation =
   | Iload of Cmm.memory_chunk * Arch.addressing_mode * Asttypes.mutable_flag
   | Istore of Cmm.memory_chunk * Arch.addressing_mode * bool
                                  (* false = initialization, true = assignment *)
+  | Imodify
   | Ialloc of { bytes : int; dbginfo : Debuginfo.alloc_dbginfo; }
   | Iintop of integer_operation
   | Iintop_imm of integer_operation * int

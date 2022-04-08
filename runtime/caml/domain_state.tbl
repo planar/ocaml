@@ -39,9 +39,6 @@ DOMAIN_STATE(struct caml_custom_table*, custom_table)
 DOMAIN_STATE(struct mark_stack*, mark_stack)
 /* See major_gc.c */
 
-DOMAIN_STATE(struct modify_log_entry*, modify_log)
-DOMAIN_STATE(uintnat, modify_log_index)
-
 DOMAIN_STATE(value*, stack_low)
 DOMAIN_STATE(value*, stack_high)
 DOMAIN_STATE(value*, stack_threshold)
@@ -92,3 +89,7 @@ DOMAIN_STATE(FILE*, eventlog_out)
 DOMAIN_STATE(void*, checking_pointer_pc)
 /* See major_gc.c */
 #endif
+
+DOMAIN_STATE(struct modify_log_entry*, modify_log)
+DOMAIN_STATE(uintnat, modify_log_index)
+/* See memory.c */

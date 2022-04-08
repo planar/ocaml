@@ -121,6 +121,7 @@ let operation d = function
   | Cload (c, Asttypes.Immutable) -> Printf.sprintf "load %s" (chunk c)
   | Cload (c, Asttypes.Mutable) -> Printf.sprintf "load_mut %s" (chunk c)
   | Calloc -> "alloc" ^ location d
+  | Cmodify -> "modify" ^ location d
   | Cstore (c, init) ->
     let init =
       match init with

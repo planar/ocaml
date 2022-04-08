@@ -153,6 +153,7 @@ and operation =
   | Cextcall of string * machtype * exttype list * bool
   | Cload of memory_chunk * Asttypes.mutable_flag
   | Calloc
+  | Cmodify
   | Cstore of memory_chunk * Lambda.initialization_or_assignment
   | Caddi | Csubi | Cmuli | Cmulhi | Cdivi | Cmodi
   | Cand | Cor | Cxor | Clsl | Clsr | Casr
