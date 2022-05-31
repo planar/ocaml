@@ -650,7 +650,9 @@ void caml_modify_batch (void)
   value *fp;
   value old, val;
   uintnat h;
+  char *mode = getenv ("CAML_MODIFY_BATCH_STOP");
 
+  if (mode != NULL && !strcmp (mode, "before")) exit (0);
   CAML_EV_BEGIN(EV_MODIFY_BATCH);
   index =
     (intnat) (Caml_state->modify_log_index / sizeof (struct modify_log_entry));
@@ -716,6 +718,7 @@ void caml_modify_batch (void)
   Caml_state->modify_log_index =
     CAML_MODIFY_LOG_SIZE * sizeof (struct modify_log_entry);
   CAML_EV_END(EV_MODIFY_BATCH);
+  if (mode != NULL && !strcmp (mode, "after")) exit (0);
 }
 
 /* You must use [caml_modify] to change a field of an existing shared block,
