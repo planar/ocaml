@@ -29,18 +29,14 @@ let to_bindings env =
   in
   VariableMap.fold f env []
 
-let rec expand simple_bindings value =
-  let fixpoint = ref true in
-  let subst s =
-    try
-      let v = List.assoc s simple_bindings in
-      fixpoint := false;
-      let expanded, fixpoint_expanded = expand simple_bindings v in
-      if fixpoint_expanded then v else expanded
-    with Not_found -> "" in
+let rec expand vars simple_bindings value =
   let b = Buffer.create (String.length value) in
-  try Buffer.add_substitute b subst value; Buffer.contents b, !fixpoint
-  with _ -> value, true
+  Buffer.add_substitute b (subst vars simple_bindings) value; Buffer.contents b
+
+and subst vars simple_bindings s =
+  if List.mem s vars then raise (Variables.Recursive_variable_definition s);
+  try expand (s :: vars) simple_bindings (List.assoc s simple_bindings)
+  with Not_found -> ""
 
 let expand env = function
   | None -> raise Not_found
@@ -48,8 +44,7 @@ let expand env = function
      let bindings = to_bindings env in
      let f (variable, value) = ((Variables.name_of_variable variable), value) in
      let simple_bindings = List.map f bindings in
-     let expanded, _ = expand simple_bindings value in
-     expanded
+     expand [] simple_bindings value
 
 let append_to_system_env environment env =
   (* Augment env with any bindings which are only in environment. This must be

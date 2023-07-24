@@ -1,4 +1,4 @@
 str
 $notvar
-\$foo
+$foo
 bar

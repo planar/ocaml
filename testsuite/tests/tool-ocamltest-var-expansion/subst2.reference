@@ -1,5 +1,5 @@
 str
 $notvar
-\$foo
+$foo
 bar
 var
