@@ -185,6 +185,8 @@ stdlib/hashbang -text
 tools/autogen text eol=lf
 tools/bump-magic-numbers eol=lf typo.long-line
 tools/ci/inria/bootstrap/remove-sinh-primitive.patch -text
+tools/ci/inria/launch eol=lf
+tools/ci/inria/main eol=lf
 tools/check-typo text eol=lf
 tools/check-symbol-names text eol=lf
 tools/msvs-promote-path text eol=lf
