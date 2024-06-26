@@ -134,6 +134,9 @@ Live blocks of a Domain's major heap pools.
 (**
 Live blocks of a Domain's major heap large allocations.
 @since 5.1 *)
+| EV_C_REQUEST_MINOR_REALLOC_DEPENDENT_TABLE
+(** Reallocation of the table of dependent memory from minor heap
+    @since 5.3 *)
 | EV_C_MAJOR_HEAP_WORDS
 (**
 Major heap size in words of a Domain.
@@ -450,6 +453,7 @@ evacuation during a compaction.
 Event spanning releasing the evacuated pools at the end of a compaction.
 @since 5.2
 *)
+| EV_MINOR_DEPENDENT
 
 (** Lifecycle events for Runtime_events and domains. *)
 type lifecycle =

@@ -33,6 +33,7 @@ type runtime_counter =
 | EV_C_MAJOR_HEAP_POOL_FRAG_WORDS
 | EV_C_MAJOR_HEAP_POOL_LIVE_BLOCKS
 | EV_C_MAJOR_HEAP_LARGE_BLOCKS
+| EV_C_REQUEST_MINOR_REALLOC_DEPENDENT_TABLE
 | EV_C_MAJOR_HEAP_WORDS
 | EV_C_MAJOR_ALLOCATED_WORDS
 | EV_C_MAJOR_ALLOCATED_WORK
@@ -92,6 +93,7 @@ type runtime_phase =
 | EV_COMPACT_EVACUATE
 | EV_COMPACT_FORWARD
 | EV_COMPACT_RELEASE
+| EV_MINOR_DEPENDENT
 
 type lifecycle =
   EV_RING_START
@@ -130,6 +132,8 @@ let runtime_counter_name counter =
       "major_heap_pool_live_blocks"
   | EV_C_MAJOR_HEAP_LARGE_BLOCKS ->
       "major_heap_large_blocks"
+  | EV_C_REQUEST_MINOR_REALLOC_DEPENDENT_TABLE ->
+      "request_minor_realloc_dependent_table"
   | EV_C_MAJOR_HEAP_WORDS ->
       "major_heap_words"
   | EV_C_MAJOR_ALLOCATED_WORDS ->
@@ -200,6 +204,7 @@ let runtime_phase_name phase =
   | EV_COMPACT_EVACUATE -> "compaction_evacuate"
   | EV_COMPACT_FORWARD -> "compaction_forward"
   | EV_COMPACT_RELEASE -> "compaction_release"
+  | EV_MINOR_DEPENDENT -> "minor_dependent"
 
 let lifecycle_name lifecycle =
   match lifecycle with
