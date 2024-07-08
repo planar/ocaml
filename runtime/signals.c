@@ -696,18 +696,7 @@ CAMLprim value caml_install_signal_handler(value signal_number, value action)
     caml_sys_error(NO_ARG);
   }
   if (Is_block(action)) {
-    /* Speculatively allocate this so we don't hold the lock for
-       a GC */
-    if (caml_signal_handlers == 0) {
-      tmp_signal_handlers = caml_alloc(NSIG, 0);
-    }
     caml_plat_lock_blocking(&signal_install_mutex);
-    if (caml_signal_handlers == 0) {
-      /* caml_alloc cannot raise asynchronous exceptions from signals
-         so this is safe */
-      caml_signal_handlers = tmp_signal_handlers;
-      caml_register_global_root(&caml_signal_handlers);
-    }
     caml_modify(&Field(caml_signal_handlers, sig), Field(action, 0));
     caml_plat_unlock(&signal_install_mutex);
   }
