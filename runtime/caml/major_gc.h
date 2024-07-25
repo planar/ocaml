@@ -26,6 +26,9 @@ typedef enum {
 
 extern gc_phase_t caml_gc_phase;
 
+extern uintnat caml_percent_free;
+extern double caml_mark_per_alloc, caml_sweep_per_alloc;
+
 intnat caml_opportunistic_major_work_available (void);
 void caml_opportunistic_major_collection_slice (intnat);
 /* auto-triggered slice from within the GC */

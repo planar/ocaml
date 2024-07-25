@@ -15,6 +15,8 @@
 
 #define CAML_INTERNALS
 
+#include <math.h>
+
 #include "caml/alloc.h"
 #include "caml/custom.h"
 #include "caml/finalise.h"
@@ -42,7 +44,6 @@ uintnat caml_max_stack_wsize;
 uintnat caml_fiber_wsz;
 
 extern uintnat caml_major_heap_increment; /* percent or words; see major_gc.c */
-extern uintnat caml_percent_free;         /*        see major_gc.c */
 extern uintnat caml_percent_max;          /*        see compact.c */
 extern uintnat caml_allocation_policy;    /*        see freelist.c */
 extern uintnat caml_custom_major_ratio;   /* see custom.c */
@@ -170,8 +171,15 @@ CAMLprim value caml_gc_set(value v)
 
   if (newpf != caml_percent_free){
     caml_percent_free = newpf;
+    double lambda = 0.833;  /* TODO benchmarks to find the best value */
+    double mu = 1 + 2 / lambda;
+    caml_sweep_per_alloc =
+      0.5 + (mu + sqrt (newpf * newpf + mu * mu)) / newpf / 2;
+    caml_mark_per_alloc = lambda * caml_sweep_per_alloc;
     caml_gc_message (0x20, "New space overhead: %"
-                     ARCH_INTNAT_PRINTF_FORMAT "u%%\n", caml_percent_free);
+                     ARCH_INTNAT_PRINTF_FORMAT "u%%, m = %f, s = %f\n",
+                     caml_percent_free, caml_mark_per_alloc,
+                     caml_sweep_per_alloc);
   }
 
   atomic_store_relaxed(&caml_verb_gc, new_verb_gc);
