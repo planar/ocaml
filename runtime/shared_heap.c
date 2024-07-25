@@ -15,6 +15,7 @@
 /**************************************************************************/
 #define CAML_INTERNALS
 
+#include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -349,7 +350,8 @@ static pool* pool_global_adopt(struct caml_heap_state* local, sizeclass sz)
   if( !r && adopted_pool ) {
     intnat sweep_work = pool_sweep(local, &local->full_pools[sz], sz, 0);
     if (sweep_work != -1){
-      Caml_state->major_work_done_between_slices += sweep_work;
+      Caml_state->major_work_done_between_slices +=
+        round (sweep_work / caml_sweep_per_alloc);
     }
     r = local->avail_pools[sz];
   }
@@ -369,7 +371,8 @@ static pool* pool_find(struct caml_heap_state* local, sizeclass sz) {
     intnat sweep_work =
       pool_sweep(local, &local->unswept_avail_pools[sz], sz, 0);
     if (sweep_work != -1){
-      Caml_state->major_work_done_between_slices += sweep_work;
+      Caml_state->major_work_done_between_slices +=
+        round (sweep_work / caml_sweep_per_alloc);
     }
   }
 
@@ -475,7 +478,9 @@ value* caml_shared_try_alloc(struct caml_heap_state* local, mlsize_t wosize,
 
 /* Sweeping.
    Return -1 when there is nothing left to sweep, otherwise return
-   the number of live words swept (which may be 0). */
+   the number of live words swept (which may be 0).
+   Note: this is in units of sweep words.
+*/
 
 static intnat pool_sweep(struct caml_heap_state* local, pool** plist,
                          sizeclass sz, int release_to_global_pool) {
@@ -537,6 +542,7 @@ static intnat pool_sweep(struct caml_heap_state* local, pool** plist,
     }
   }
 
+  /* Return the amount of work done in units of sweep words. */
   return work;
 }
 
