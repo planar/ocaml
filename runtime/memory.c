@@ -238,16 +238,17 @@ CAMLexport void caml_alloc_dependent_memory (value v, mlsize_t nbytes)
   if (nbytes == 0) return;
   CAMLassert (Is_block (v));
   if (Is_young (v)){
+    Caml_state->stat_minor_dependent_bytes += nbytes;
     add_to_dependent_table (&Caml_state->minor_tables->dependent, v, nbytes);
-    Caml_state->dependent_bytes_minor += nbytes;
-    if (Caml_state->dependent_bytes_minor >
+    Caml_state->minor_dependent_bsz += nbytes;
+    if (Caml_state->minor_dependent_bsz >
           Bsize_wsize (Caml_state->minor_heap_wsz)
           / 100 * caml_custom_minor_ratio){
       caml_request_minor_gc ();
     }
   }else{
-    Caml_state->dependent_bytes += nbytes;
-    Caml_state->dependent_bytes_allocated += nbytes;
+    Caml_state->major_dependent_bsz += nbytes;
+    Caml_state->allocated_dependent_bytes += nbytes;
   }
   size_t nwords = (nbytes + sizeof(value) - 1) / sizeof(value);
   caml_memprof_sample_block(v, nwords, nwords, CAML_MEMPROF_SRC_DEPENDENT);
@@ -257,9 +258,9 @@ CAMLexport void caml_free_dependent_memory (value v, mlsize_t nbytes)
 {
   CAMLassert (Is_block (v));
   if (Is_young (v)){
-    Caml_state->dependent_bytes_minor -= nbytes;
+    Caml_state->minor_dependent_bsz -= nbytes;
   }else{
-    Caml_state->dependent_bytes -= nbytes;
+    Caml_state->major_dependent_bsz -= nbytes;
   }
 }
 

@@ -35,6 +35,7 @@ void caml_accum_heap_stats(struct heap_stats* acc, const struct heap_stats* h)
   acc->large_max_words = intnat_max(acc->large_max_words, acc->large_words);
   acc->large_max_words = intnat_max(acc->large_max_words, h->large_max_words);
   acc->large_blocks += h->large_blocks;
+  acc->dependent_bytes += h->dependent_bytes;
 }
 
 void caml_remove_heap_stats(struct heap_stats* acc, const struct heap_stats* h)
@@ -45,6 +46,7 @@ void caml_remove_heap_stats(struct heap_stats* acc, const struct heap_stats* h)
   acc->pool_frag_words -= h->pool_frag_words;
   acc->large_words -= h->large_words;
   acc->large_blocks -= h->large_blocks;
+  acc->dependent_bytes -= h->dependent_bytes;
 }
 
 void caml_accum_alloc_stats(
@@ -54,6 +56,9 @@ void caml_accum_alloc_stats(
   acc->minor_words += s->minor_words;
   acc->promoted_words += s->promoted_words;
   acc->major_words += s->major_words;
+  acc->minor_dependent_bytes += s->minor_dependent_bytes;
+  acc->promoted_dependent_bytes += s->promoted_dependent_bytes;
+  acc->major_dependent_bytes += s->major_dependent_bytes;
   acc->forced_major_collections += s->forced_major_collections;
 }
 
@@ -64,6 +69,9 @@ void caml_collect_alloc_stats_sample(
   sample->minor_words = local->stat_minor_words;
   sample->promoted_words = local->stat_promoted_words;
   sample->major_words = local->stat_major_words;
+  sample->minor_dependent_bytes = local->stat_minor_dependent_bytes;
+  sample->promoted_dependent_bytes = local->stat_promoted_dependent_bytes;
+  sample->major_dependent_bytes = local->stat_major_dependent_bytes;
   sample->forced_major_collections = local->stat_forced_major_collections;
 }
 
@@ -72,6 +80,9 @@ void caml_reset_domain_alloc_stats(caml_domain_state *local)
   local->stat_minor_words = 0;
   local->stat_promoted_words = 0;
   local->stat_major_words = 0;
+  local->stat_minor_dependent_bytes = 0;
+  local->stat_promoted_dependent_bytes = 0;
+  local->stat_major_dependent_bytes = 0;
   local->stat_forced_major_collections = 0;
 }
 

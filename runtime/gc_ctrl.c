@@ -104,6 +104,7 @@ CAMLprim value caml_gc_minor_words(value v)
   CAMLreturn(caml_copy_double(caml_gc_minor_words_unboxed()));
 }
 
+/* FIXME doligez: add fields for external allocations. */
 CAMLprim value caml_gc_counters(value v)
 {
   CAMLparam0 ();   /* v is ignored */
@@ -129,7 +130,7 @@ CAMLprim value caml_gc_get(value v)
 
   res = caml_alloc_tuple (11);
   Store_field (res, 0, Val_long (Caml_state->minor_heap_wsz));          /* s */
-  Store_field (res, 2, Val_long (caml_percent_free));                   /* o */
+  Store_field (res, 2, Val_long (get_caml_percent_free ()));            /* o */
   Store_field (res, 3, Val_long (atomic_load_relaxed(&caml_verb_gc)));  /* v */
   Store_field (res, 5, Val_long (caml_max_stack_wsize));                /* l */
   Store_field (res, 8, Val_long (caml_custom_major_ratio));             /* M */
@@ -169,17 +170,11 @@ CAMLprim value caml_gc_set(value v)
 
   caml_change_max_stack_size (new_max_stack_size);
 
-  if (newpf != caml_percent_free){
-    caml_percent_free = newpf;
-    double lambda = 0.833;  /* TODO benchmarks to find the best value */
-    double mu = 1 + 2 / lambda;
-    caml_sweep_per_alloc =
-      0.5 + (mu + sqrt (newpf * newpf + mu * mu)) / newpf / 2;
-    caml_mark_per_alloc = lambda * caml_sweep_per_alloc;
+  if (newpf != get_caml_percent_free ()){
+    set_caml_percent_free (newpf);
     caml_gc_message (0x20, "New space overhead: %"
-                     ARCH_INTNAT_PRINTF_FORMAT "u%%, m = %f, s = %f\n",
-                     caml_percent_free, caml_mark_per_alloc,
-                     caml_sweep_per_alloc);
+                            ARCH_INTNAT_PRINTF_FORMAT "u%%\n",
+                     newpf);
   }
 
   atomic_store_relaxed(&caml_verb_gc, new_verb_gc);
@@ -343,7 +338,7 @@ void caml_init_gc (void)
 
   caml_max_stack_wsize = caml_params->init_max_stack_wsz;
   caml_fiber_wsz = (Stack_threshold * 2) / sizeof(value);
-  caml_percent_free = norm_pfree (caml_params->init_percent_free);
+  set_caml_percent_free (norm_pfree (caml_params->init_percent_free));
   caml_gc_log ("Initial stack limit: %"
                ARCH_INTNAT_PRINTF_FORMAT "uk bytes",
                caml_max_stack_wsize / 1024 * sizeof (value));

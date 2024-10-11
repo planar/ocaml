@@ -351,7 +351,7 @@ static pool* pool_global_adopt(struct caml_heap_state* local, sizeclass sz)
     intnat sweep_work = pool_sweep(local, &local->full_pools[sz], sz, 0);
     if (sweep_work != -1){
       Caml_state->major_work_done_between_slices +=
-        round (sweep_work / caml_sweep_per_alloc);
+        round (sweep_work / get_caml_sweep_per_alloc());
     }
     r = local->avail_pools[sz];
   }
@@ -372,7 +372,7 @@ static pool* pool_find(struct caml_heap_state* local, sizeclass sz) {
       pool_sweep(local, &local->unswept_avail_pools[sz], sz, 0);
     if (sweep_work != -1){
       Caml_state->major_work_done_between_slices +=
-        round (sweep_work / caml_sweep_per_alloc);
+        round (sweep_work / get_caml_sweep_per_alloc());
     }
   }
 

@@ -74,11 +74,10 @@ struct mark_stack {
 /* Speed setting for the major GC.
    [caml_percent_free] is the user-visible setting,
    [caml_mark_per_alloc] and [caml_sweep_per_alloc] are derived
-   from it.
-   TODO should these variables be atomic?
+   from it. They are accessed through the {get,set}_caml_percent_free functions.
 */
-uintnat caml_percent_free = Percent_free_def;
-double caml_mark_per_alloc, caml_sweep_per_alloc;
+static atomic_uintnat caml_percent_free = Percent_free_def;
+static atomic_double caml_mark_per_alloc, caml_sweep_per_alloc;
 
 /* This variable is only written with the world stopped, so it need not be
    atomic */
@@ -590,6 +589,8 @@ double caml_mean_space_overhead (void)
   return mean;
 }
 
+static double heap_dependent_factor = 1.0;
+
 static inline intnat max2 (intnat a, intnat b)
 {
   if (a > b){
@@ -605,15 +606,6 @@ static inline intnat min2 (intnat a, intnat b)
     return a;
   }else{
     return b;
-  }
-}
-
-static inline intnat max3(intnat a, intnat b, intnat c)
-{
-  if (a > b){
-    return max2 (a, c);
-  }else{
-    return max2 (b, c);
   }
 }
 
@@ -633,24 +625,29 @@ static void update_major_slice_work(intnat howmuch,
   uintnat heap_wsz;
   intnat extra_work, new_work;
   intnat my_alloc_count, my_dependent_count;
+  intnat unified_alloc_count;
   double my_extra_count;
   caml_domain_state *dom_st = Caml_state;
   double total_cycle_alloc;
 
   my_alloc_count = dom_st->allocated_words;
-  my_dependent_count = Wsize_bsize (dom_st->dependent_bytes_allocated);
+  my_dependent_count = Wsize_bsize (dom_st->allocated_dependent_bytes);
   my_extra_count = dom_st->extra_heap_resources;
   dom_st->stat_major_words += dom_st->allocated_words;
+  dom_st->stat_major_dependent_bytes += dom_st->allocated_dependent_bytes;
   dom_st->allocated_words = 0;
-  dom_st->dependent_bytes_allocated = 0;
+  dom_st->allocated_dependent_bytes = 0;
   dom_st->extra_heap_resources = 0.0;
 
+  /* FIXME doligez: only needed for extra_work, to be removed */
   /* How many words are allocated in this cycle (estimate). */
   /* TODO: get the size of the whole heap instead of this. */
   heap_wsz = Wsize_bsize (caml_heap_size(dom_st->shared_heap));
   /* TODO: replace heap_wsz with H+E */
+  /* Note: [total_cycle_alloc] is only used to compute [extra_work]. */
   total_cycle_alloc =
-    2.0 * heap_wsz * caml_percent_free / 3 / (100 + caml_percent_free);
+    2.0 * heap_wsz * atomic_load_relaxed (&caml_percent_free)
+    / 3 / (100 + caml_percent_free);
 
   extra_work = (intnat) (my_extra_count * total_cycle_alloc);
 
@@ -670,8 +667,9 @@ static void update_major_slice_work(intnat howmuch,
                          ARCH_INTNAT_PRINTF_FORMAT "d\n",
                    extra_work);
 
-  /* TODO replace max(h,e) with h+e and scale by H/(H+E) */
-  new_work = max3 (my_alloc_count, my_dependent_count, extra_work);
+  unified_alloc_count =
+    (my_alloc_count + my_dependent_count) * heap_dependent_factor;
+  new_work = max2 (unified_alloc_count, extra_work);
   atomic_fetch_add (&work_counter, dom_st->major_work_done_between_slices);
   dom_st->major_work_done_between_slices = 0;
   atomic_fetch_add (&alloc_counter, new_work);
@@ -684,6 +682,7 @@ static void update_major_slice_work(intnat howmuch,
     dom_st->slice_target = atomic_load (&work_counter);  /* already reached */
     dom_st->slice_budget = howmuch;
   }
+  dom_st->slice_budget = max2 (dom_st->slice_budget, Major_slice_work_min);
 
   caml_gc_log("Updated major work: [%c] "
               " %"ARCH_INTNAT_PRINTF_FORMAT "u heap_words, "
@@ -1329,6 +1328,9 @@ static void stw_cycle_all_domains(caml_domain_state* domain, void* args,
        and have per-domain copies of the data? */
     barrier_status b = caml_global_barrier_begin();
     if (caml_global_barrier_is_final(b)) {
+      struct gc_stats s;
+      intnat not_garbage_words, dependent_words;
+
       caml_cycle_heap_from_stw_single();
       caml_gc_log("GC cycle %lu completed (heap cycled)",
                   (long unsigned int)caml_major_cycles_completed);
@@ -1336,14 +1338,18 @@ static void stw_cycle_all_domains(caml_domain_state* domain, void* args,
       caml_major_cycles_completed++;
       caml_gc_message(0x40, "Starting major GC cycle\n");
 
+      caml_compute_gc_stats(&s);
+      not_garbage_words =
+        s.heap_stats.pool_live_words + s.heap_stats.large_words;
+      dependent_words = Wsize_bsize (s.heap_stats.dependent_bytes);
+      heap_dependent_factor =
+        (double) not_garbage_words / (not_garbage_words + dependent_words);
+
       if (atomic_load_relaxed(&caml_verb_gc) & 0x400) {
         struct gc_stats s;
         intnat heap_words, not_garbage_words, swept_words;
 
-        caml_compute_gc_stats(&s);
         heap_words = s.heap_stats.pool_words + s.heap_stats.large_words;
-        not_garbage_words = s.heap_stats.pool_live_words
-                            + s.heap_stats.large_words;
         swept_words = domain->swept_words;
         caml_gc_log ("heap_words: %"ARCH_INTNAT_PRINTF_FORMAT"d "
                       "not_garbage_words %"ARCH_INTNAT_PRINTF_FORMAT"d "
@@ -1652,12 +1658,14 @@ static void major_collection_slice(intnat howmuch,
 
     while (!domain_state->sweeping_done &&
            (budget = get_major_slice_work(mode)) > 0) {
-      intnat sweep_budget = budget * caml_sweep_per_alloc;
+      double s = atomic_load_relaxed (&caml_sweep_per_alloc);
+      intnat sweep_budget = budget * s;
+      CAMLassert (sweep_budget > 0);
       intnat left = caml_sweep(domain_state->shared_heap, sweep_budget);
       intnat work_done = sweep_budget - left;
 
       sweep_work += work_done;
-      commit_major_slice_work (round (work_done / caml_sweep_per_alloc));
+      commit_major_slice_work (round (work_done / s));
       if (work_done == 0) {
         domain_state->sweeping_done = 1;
         atomic_fetch_add_verify_ge0(&num_domains_to_sweep, -1);
@@ -1674,11 +1682,12 @@ mark_again:
 
     while (!domain_state->marking_done &&
            (budget = get_major_slice_work(mode)) > 0) {
-      intnat mark_budget = budget * caml_mark_per_alloc;
+      double m = atomic_load_relaxed (&caml_mark_per_alloc);
+      intnat mark_budget = budget * m;
       intnat left = mark(budget);
       intnat work_done = mark_budget - left;
       mark_work += work_done;
-      commit_major_slice_work(round (work_done / caml_mark_per_alloc));
+      commit_major_slice_work (round (work_done / m));
     }
 
     if (log_events) CAML_EV_END(EV_MAJOR_MARK);
@@ -1722,11 +1731,12 @@ mark_again:
         while (domain_state->ephe_info->todo != (value) NULL &&
                saved_ephe_cycle > domain_state->ephe_info->cycle &&
                (budget = get_major_slice_work(mode)) > 0) {
-          intnat mark_budget = budget * caml_mark_per_alloc;
+          double m = atomic_load_relaxed (&caml_mark_per_alloc);
+          intnat mark_budget = budget * m;
           intnat left = ephe_mark(mark_budget, saved_ephe_cycle,
                                   EPHE_MARK_DEFAULT);
           intnat work_done = mark_budget - left;
-          commit_major_slice_work (round (work_done / caml_mark_per_alloc));
+          commit_major_slice_work (round (work_done / m));
 
           // FIXME: Can we delete this?
           if (left > 0) {
@@ -1783,10 +1793,11 @@ mark_again:
 
         while (domain_state->ephe_info->todo != 0 &&
                (budget = get_major_slice_work(mode)) > 0) {
-          intnat sweep_budget = budget * caml_sweep_per_alloc;
+          double s = atomic_load_relaxed (&caml_sweep_per_alloc);
+          intnat sweep_budget = budget * s;
           intnat left = ephe_sweep (domain_state, budget);
           intnat work_done = sweep_budget - left;
-          commit_major_slice_work(round (work_done / caml_sweep_per_alloc));
+          commit_major_slice_work(round (work_done / s));
         }
 
         CAML_EV_END(EV_MAJOR_EPHE_SWEEP);
@@ -1953,7 +1964,10 @@ void caml_finish_marking (void)
     caml_empty_mark_stack();
     caml_shrink_mark_stack();
     Caml_state->stat_major_words += Caml_state->allocated_words;
+    Caml_state->stat_major_dependent_bytes +=
+      Caml_state->allocated_dependent_bytes;
     Caml_state->allocated_words = 0;
+    Caml_state->allocated_dependent_bytes = 0;
     CAML_EV_END(EV_MAJOR_FINISH_MARKING);
   }
 }
@@ -2092,6 +2106,28 @@ int caml_init_major_gc(caml_domain_state* d) {
   atomic_fetch_add(&num_domains_to_final_update_last, 1);
 
   return 0;
+}
+
+uintnat get_caml_percent_free (void)
+{
+  return atomic_load_relaxed (&caml_percent_free);
+}
+
+void set_caml_percent_free (uintnat pf)
+{
+  atomic_store_relaxed (&caml_percent_free, pf);
+  double lambda = 0.833;  /* TODO benchmarks to find the best value */
+  double mu = 1 + 2 / lambda;
+  double s = 0.5 + (mu + sqrt (pf * pf + mu * mu)) / pf / 2;
+  double m = lambda * s;
+  atomic_store_relaxed (&caml_sweep_per_alloc, s);
+  atomic_store_relaxed (&caml_mark_per_alloc, m);
+  caml_gc_log ("GC speed updated: %f mark_per_alloc, %f sweep_per_alloc", m, s);
+}
+
+double get_caml_sweep_per_alloc (void)
+{
+  return atomic_load_relaxed (&caml_sweep_per_alloc);
 }
 
 void caml_teardown_major_gc(void) {
