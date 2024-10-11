@@ -733,17 +733,19 @@ static void dependent_finalize_minor (caml_domain_state *domain)
     if (Is_young(*v)) {
       if (get_header_val(*v) == 0) { /* value copied to major heap */
 #ifdef DEBUG
-        domain->dependent_bytes_minor -= elt->mem;
+        domain->minor_dependent_bsz -= elt->mem;
         /* see assertion below */
 #endif
         /* inlined version of [caml_alloc_dependent_memory] */
-        domain->dependent_bytes += elt->mem;
-        domain->dependent_bytes_allocated += elt->mem;
+        domain->allocated_dependent_bytes += elt->mem;
+        domain->stat_promoted_dependent_bytes += elt->mem;
+        domain->major_dependent_bsz += elt->mem;
       }
     }
   }
   /* At this point, everything must be finalized or promoted. */
-  CAMLassert (domain->dependent_bytes_minor == 0);
+  CAMLassert (domain->minor_dependent_bsz == 0);
+  domain->minor_dependent_bsz = 0;
 }
 
 /* Increment the counter non-atomically, when it is already known that this

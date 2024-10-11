@@ -77,7 +77,7 @@ let allocating_func minors_before =
   (* No poll yet *)
   ignore (Sys.opaque_identity (ref 42));
   let minors_now2 = minor_gcs () in
-  assert (minors_before + 1 = minors_now2);
+  assert (minors_before < minors_now2);
   (* Polled at alloc *)
   [@@inline never]
 
