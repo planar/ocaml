@@ -2101,9 +2101,10 @@ uintnat get_caml_percent_free (void)
 void set_caml_percent_free (uintnat pf)
 {
   atomic_store_relaxed (&caml_percent_free, pf);
+  double o = pf / 100.0;
   double lambda = 0.833;  /* TODO benchmarks to find the best value */
   double mu = 1 + 2 / lambda;
-  double s = 0.5 + (mu + sqrt (pf * pf + mu * mu)) / pf / 2;
+  double s = 0.5 + (mu + sqrt (o * o + mu * mu)) / o / 2;
   double m = lambda * s;
   atomic_store_relaxed (&caml_sweep_per_alloc, s);
   atomic_store_relaxed (&caml_mark_per_alloc, m);
