@@ -667,12 +667,22 @@ static void update_major_slice_work(intnat howmuch,
                          ARCH_INTNAT_PRINTF_FORMAT "d\n",
                    extra_work);
 
-  unified_alloc_count =
-    (my_alloc_count + my_dependent_count) * heap_dependent_factor;
+  unified_alloc_count = my_alloc_count + my_dependent_count;
   new_work = max2 (unified_alloc_count, extra_work);
-  atomic_fetch_add (&work_counter, dom_st->major_work_done_between_slices);
-  dom_st->major_work_done_between_slices = 0;
   atomic_fetch_add (&alloc_counter, new_work);
+
+  atomic_fetch_add (
+    &work_counter,
+    (  dom_st->sweep_work_done_between_slices
+       / atomic_load_relaxed (&caml_sweep_per_alloc)
+     + dom_st->mark_work_done_between_slices
+       / atomic_load_relaxed (&caml_mark_per_alloc))
+    / heap_dependent_factor
+  );
+
+  dom_st->sweep_work_done_between_slices = 0;
+  dom_st->mark_work_done_between_slices = 0;
+
   if (howmuch == AUTO_TRIGGERED_MAJOR_SLICE ||
       howmuch == GC_CALCULATE_MAJOR_SLICE) {
     dom_st->slice_target = atomic_load (&alloc_counter);
@@ -691,6 +701,7 @@ static void update_major_slice_work(intnat howmuch,
               " %"ARCH_INTNAT_PRINTF_FORMAT "d extra_work,  "
               " %"ARCH_INTNAT_PRINTF_FORMAT "u work counter %s,  "
               " %"ARCH_INTNAT_PRINTF_FORMAT "u alloc counter,  "
+              " %"ARCH_INTNAT_PRINTF_FORMAT "d alloc-work,  "
               " %"ARCH_INTNAT_PRINTF_FORMAT "u slice target,  "
               " %"ARCH_INTNAT_PRINTF_FORMAT "d slice budget"
               ,
@@ -701,6 +712,8 @@ static void update_major_slice_work(intnat howmuch,
               atomic_load (&work_counter) > atomic_load (&alloc_counter)
                 ? "[ahead]" : "[behind]",
               atomic_load (&alloc_counter),
+              (intnat) atomic_load (&alloc_counter)
+                - (intnat) atomic_load (&work_counter),
               dom_st->slice_target, dom_st->slice_budget
               );
 }
@@ -713,7 +726,8 @@ typedef enum {
   Slice_opportunistic
 } collection_slice_mode;
 
-/* Return chunk bugdet in units of allocated words. */
+/* Return chunk bugdet in units of GC work (scaled).
+   If this is nonpositive, we have done enough work for this slice. */
 static intnat get_major_slice_work(collection_slice_mode mode){
   caml_domain_state *dom_st = Caml_state;
 
@@ -723,7 +737,15 @@ static intnat get_major_slice_work(collection_slice_mode mode){
   /* calculate how much work remains to do for this chunk */
   intnat budget =
     max2 (diffmod (dom_st->slice_target, atomic_load (&work_counter)),
-          dom_st->slice_budget);
+          dom_st->slice_budget)
+    * heap_dependent_factor;
+caml_gc_log ("get_major_slice_work: "
+             "target=%ld, "
+             "counter=%ld, "
+             "slice_budget=%ld, "
+             "-> scaled budget=%ld, ",
+             dom_st->slice_target, atomic_load (&work_counter),
+             dom_st->slice_budget, budget);
   return min2(budget, Chunk_size);
 }
 
@@ -732,16 +754,19 @@ static intnat get_major_slice_work(collection_slice_mode mode){
    the slice's target counter.
    [words_done] is in units of allocated words.
  */
-static void commit_major_slice_work(intnat words_done) {
+static void commit_major_slice_work(double words_done) {
   caml_domain_state *dom_st = Caml_state;
+  intnat raw = round (words_done / heap_dependent_factor);
 
-  caml_gc_log ("Commit major slice work: "
-               " %"ARCH_INTNAT_PRINTF_FORMAT"d words_done, ",
-               words_done);
-
-  dom_st->slice_budget -= words_done;
-  atomic_fetch_add (&work_counter, words_done);
-  if (diffmod (dom_st->slice_target, atomic_load (&work_counter)) <= 0){
+  dom_st->slice_budget -= raw;
+  atomic_fetch_add (&work_counter, raw);
+  intnat wc = atomic_load (&work_counter);
+  caml_gc_log ("Commit major slice work:"
+               " %g words_done (scaled),"
+               " %"ARCH_INTNAT_PRINTF_FORMAT"d words_done (raw),"
+               " %"ARCH_INTNAT_PRINTF_FORMAT"d work_counter,",
+               words_done, raw, wc);
+  if (diffmod (dom_st->slice_target, wc) <= 0){
     /* We've done enough work by ourselves, no need to interrupt the other
        domains. */
     dom_st->requested_global_major_slice = 0;
@@ -1345,15 +1370,16 @@ static void stw_cycle_all_domains(caml_domain_state* domain, void* args,
       heap_dependent_factor =
         (double) not_garbage_words / (not_garbage_words + dependent_words);
 
+      caml_gc_log ("heap dependent factor = %g", heap_dependent_factor);
+
       if (atomic_load_relaxed(&caml_verb_gc) & 0x400) {
-        struct gc_stats s;
-        intnat heap_words, not_garbage_words, swept_words;
+        intnat heap_words, swept_words;
 
         heap_words = s.heap_stats.pool_words + s.heap_stats.large_words;
         swept_words = domain->swept_words;
         caml_gc_log ("heap_words: %"ARCH_INTNAT_PRINTF_FORMAT"d "
-                      "not_garbage_words %"ARCH_INTNAT_PRINTF_FORMAT"d "
-                      "swept_words %"ARCH_INTNAT_PRINTF_FORMAT"d",
+                      "not_garbage_words: %"ARCH_INTNAT_PRINTF_FORMAT"d "
+                      "swept_words: %"ARCH_INTNAT_PRINTF_FORMAT"d",
                       heap_words, not_garbage_words, swept_words);
 
         if (caml_stat_space_overhead.heap_words_last_cycle != 0) {
@@ -1663,7 +1689,7 @@ static void major_collection_slice(intnat howmuch,
       CAMLassert (sweep_budget > 0);
       intnat left = caml_sweep(domain_state->shared_heap, sweep_budget);
       intnat work_done = sweep_budget - left;
-
+caml_gc_log ("sweep: budget=%ld, left=%ld, done=%ld", sweep_budget, left, work_done);
       sweep_work += work_done;
       commit_major_slice_work (round (work_done / s));
       if (work_done == 0) {
@@ -1684,8 +1710,9 @@ mark_again:
            (budget = get_major_slice_work(mode)) > 0) {
       double m = atomic_load_relaxed (&caml_mark_per_alloc);
       intnat mark_budget = budget * m;
-      intnat left = mark(budget);
+      intnat left = mark(mark_budget);
       intnat work_done = mark_budget - left;
+caml_gc_log ("mark: budget=%ld, left=%ld, done=%ld", mark_budget, left, work_done);
       mark_work += work_done;
       commit_major_slice_work (round (work_done / m));
     }

@@ -35,6 +35,9 @@ void caml_teardown_shared_heap(struct caml_heap_state* heap);
 value* caml_shared_try_alloc(struct caml_heap_state*,
                              mlsize_t, tag_t, reserved_t);
 
+/* Update the dependent_bytes field of the heap stats. */
+void caml_add_dependent_bytes (struct caml_heap_state *local, intnat n);
+
 /* Copy the domain-local heap stats into a heap stats sample. */
 void caml_collect_heap_stats_sample(
   struct caml_heap_state* local,

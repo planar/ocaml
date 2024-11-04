@@ -247,11 +247,14 @@ CAMLexport void caml_alloc_dependent_memory (value v, mlsize_t nbytes)
       caml_request_minor_gc ();
     }
   }else{
-    Caml_state->major_dependent_bsz += nbytes;
+    caml_add_dependent_bytes (Caml_state->shared_heap, nbytes);
     Caml_state->allocated_dependent_bytes += nbytes;
+    if (Caml_state->allocated_dependent_bytes
+        >= Bsize_wsize (Caml_state->minor_heap_wsz) / 5){
+      CAML_EV_COUNTER (EV_C_REQUEST_MAJOR_ALLOC_SHR, 1);
+      caml_request_major_slice(1);
+    }
   }
-  size_t nwords = (nbytes + sizeof(value) - 1) / sizeof(value);
-  caml_memprof_sample_block(v, nwords, nwords, CAML_MEMPROF_SRC_DEPENDENT);
 }
 
 CAMLexport void caml_free_dependent_memory (value v, mlsize_t nbytes)
@@ -260,7 +263,7 @@ CAMLexport void caml_free_dependent_memory (value v, mlsize_t nbytes)
   if (Is_young (v)){
     Caml_state->minor_dependent_bsz -= nbytes;
   }else{
-    Caml_state->major_dependent_bsz -= nbytes;
+    caml_add_dependent_bytes (Caml_state->shared_heap, -nbytes);
   }
 }
 

@@ -722,7 +722,7 @@ static void dependent_finalize_minor (caml_domain_state *domain)
         /* inlined version of [caml_alloc_dependent_memory] */
         domain->allocated_dependent_bytes += elt->mem;
         domain->stat_promoted_dependent_bytes += elt->mem;
-        domain->major_dependent_bsz += elt->mem;
+        caml_add_dependent_bytes (domain->shared_heap, elt->mem);
       }
     }
   }

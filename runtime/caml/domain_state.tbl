@@ -128,7 +128,6 @@ DOMAIN_STATE(double, extra_heap_resources_minor)   /* FIXME doligez: remove */
 
 /* How much external memory is currenty held by the minor and major heap. */
 DOMAIN_STATE(uintnat, minor_dependent_bsz)
-DOMAIN_STATE(uintnat, major_dependent_bsz)
 
 /* How much work needs to be done (by all domains) before we stop this slice. */
 DOMAIN_STATE(intnat, slice_target)
@@ -137,7 +136,9 @@ DOMAIN_STATE(intnat, slice_target)
 DOMAIN_STATE(intnat, slice_budget)
 
 /* Accounting for sweeping work done while allocating. */
-DOMAIN_STATE(intnat, major_work_done_between_slices)
+DOMAIN_STATE(intnat, sweep_work_done_between_slices)
+/* Accounting for marking work done in the write barrier. */
+DOMAIN_STATE(intnat, mark_work_done_between_slices)
 
 DOMAIN_STATE(struct caml_extern_state*, extern_state)
 DOMAIN_STATE(struct caml_intern_state*, intern_state)

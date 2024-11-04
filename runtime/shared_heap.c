@@ -350,8 +350,7 @@ static pool* pool_global_adopt(struct caml_heap_state* local, sizeclass sz)
   if( !r && adopted_pool ) {
     intnat sweep_work = pool_sweep(local, &local->full_pools[sz], sz, 0);
     if (sweep_work != -1){
-      Caml_state->major_work_done_between_slices +=
-        round (sweep_work / get_caml_sweep_per_alloc());
+      Caml_state->sweep_work_done_between_slices += sweep_work;
     }
     r = local->avail_pools[sz];
   }
@@ -371,8 +370,7 @@ static pool* pool_find(struct caml_heap_state* local, sizeclass sz) {
     intnat sweep_work =
       pool_sweep(local, &local->unswept_avail_pools[sz], sz, 0);
     if (sweep_work != -1){
-      Caml_state->major_work_done_between_slices +=
-        round (sweep_work / get_caml_sweep_per_alloc());
+      Caml_state->sweep_work_done_between_slices += sweep_work;
     }
   }
 
@@ -677,6 +675,11 @@ static void adopt_pool_stats_with_lock(
 static void adopt_all_pool_stats_with_lock(struct caml_heap_state *adopter) {
   caml_accum_heap_stats(&adopter->stats, &pool_freelist.stats);
   memset(&pool_freelist.stats, 0, sizeof(pool_freelist.stats));
+}
+
+void caml_add_dependent_bytes (struct caml_heap_state *local, intnat n)
+{
+  local->stats.dependent_bytes += n;
 }
 
 void caml_collect_heap_stats_sample(

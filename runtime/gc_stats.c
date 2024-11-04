@@ -186,4 +186,9 @@ void caml_compute_gc_stats(struct gc_stats* buf)
   }
   buf->heap_stats.pool_max_words = pool_max;
   buf->heap_stats.large_max_words = large_max;
+  caml_gc_log ("total, pool_words=%ld, pool_live_words=%ld, "
+               "large_words=%ld, dependent_bytes=%ld",
+               buf->heap_stats.pool_words,
+               buf->heap_stats.pool_live_words, buf->heap_stats.large_words,
+               buf->heap_stats.dependent_bytes);
 }
