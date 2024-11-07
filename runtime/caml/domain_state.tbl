@@ -155,6 +155,7 @@ DOMAIN_STATE(uintnat, stat_minor_dependent_bytes)
 DOMAIN_STATE(uintnat, stat_promoted_dependent_bytes)
 DOMAIN_STATE(uintnat, stat_major_dependent_bytes)
 DOMAIN_STATE(intnat, stat_forced_major_collections)
+DOMAIN_STATE(uintnat, stat_major_work_done)
 DOMAIN_STATE(uintnat, stat_blocks_marked)
 
 DOMAIN_STATE(int, inside_stw_handler)

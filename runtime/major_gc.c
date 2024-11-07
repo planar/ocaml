@@ -679,6 +679,8 @@ static void update_major_slice_work(intnat howmuch,
        / atomic_load_relaxed (&caml_mark_per_alloc))
     / heap_dependent_factor
   );
+  dom_st->stat_major_work_done += dom_st->sweep_work_done_between_slices;
+  dom_st->stat_major_work_done += dom_st->mark_work_done_between_slices;
 
   dom_st->sweep_work_done_between_slices = 0;
   dom_st->mark_work_done_between_slices = 0;
@@ -758,6 +760,7 @@ static void commit_major_slice_work(double words_done) {
   caml_domain_state *dom_st = Caml_state;
   intnat raw = round (words_done / heap_dependent_factor);
 
+  dom_st->stat_major_work_done += words_done;
   dom_st->slice_budget -= raw;
   atomic_fetch_add (&work_counter, raw);
   intnat wc = atomic_load (&work_counter);
