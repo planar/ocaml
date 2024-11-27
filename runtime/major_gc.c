@@ -741,13 +741,13 @@ static intnat get_major_slice_work(collection_slice_mode mode){
     max2 (diffmod (dom_st->slice_target, atomic_load (&work_counter)),
           dom_st->slice_budget)
     * heap_dependent_factor;
-caml_gc_log ("get_major_slice_work: "
-             "target=%ld, "
-             "counter=%ld, "
-             "slice_budget=%ld, "
-             "-> scaled budget=%ld, ",
-             dom_st->slice_target, atomic_load (&work_counter),
-             dom_st->slice_budget, budget);
+  caml_gc_log ("get_major_slice_work: "
+               "target=%ld, "
+               "counter=%ld, "
+               "slice_budget=%ld, "
+               "scaled budget=%ld",
+               dom_st->slice_target, atomic_load (&work_counter),
+               dom_st->slice_budget, budget);
   return min2(budget, Chunk_size);
 }
 
@@ -760,7 +760,6 @@ static void commit_major_slice_work(double words_done) {
   caml_domain_state *dom_st = Caml_state;
   intnat raw = round (words_done / heap_dependent_factor);
 
-  dom_st->stat_major_work_done += words_done;
   dom_st->slice_budget -= raw;
   atomic_fetch_add (&work_counter, raw);
   intnat wc = atomic_load (&work_counter);
@@ -1692,8 +1691,10 @@ static void major_collection_slice(intnat howmuch,
       CAMLassert (sweep_budget > 0);
       intnat left = caml_sweep(domain_state->shared_heap, sweep_budget);
       intnat work_done = sweep_budget - left;
-caml_gc_log ("sweep: budget=%ld, left=%ld, done=%ld", sweep_budget, left, work_done);
+      caml_gc_log ("sweep: budget=%ld, left=%ld, done=%ld",
+                   sweep_budget, left, work_done);
       sweep_work += work_done;
+      domain_state->stat_major_work_done += work_done;
       commit_major_slice_work (round (work_done / s));
       if (work_done == 0) {
         domain_state->sweeping_done = 1;
@@ -1712,11 +1713,14 @@ mark_again:
     while (!domain_state->marking_done &&
            (budget = get_major_slice_work(mode)) > 0) {
       double m = atomic_load_relaxed (&caml_mark_per_alloc);
-      intnat mark_budget = budget * m;
+      intnat mark_budget = ceil (budget * m);
+      CAMLassert (mark_budget > 0);
       intnat left = mark(mark_budget);
       intnat work_done = mark_budget - left;
-caml_gc_log ("mark: budget=%ld, left=%ld, done=%ld", mark_budget, left, work_done);
+      caml_gc_log ("mark: budget=%ld, left=%ld, done=%ld",
+                   mark_budget, left, work_done);
       mark_work += work_done;
+      domain_state->stat_major_work_done += work_done;
       commit_major_slice_work (round (work_done / m));
     }
 
@@ -1762,10 +1766,14 @@ caml_gc_log ("mark: budget=%ld, left=%ld, done=%ld", mark_budget, left, work_don
                saved_ephe_cycle > domain_state->ephe_info->cycle &&
                (budget = get_major_slice_work(mode)) > 0) {
           double m = atomic_load_relaxed (&caml_mark_per_alloc);
-          intnat mark_budget = budget * m;
+          intnat mark_budget = ceil (budget * m);
+          CAMLassert (mark_budget > 0);
           intnat left = ephe_mark(mark_budget, saved_ephe_cycle,
                                   EPHE_MARK_DEFAULT);
           intnat work_done = mark_budget - left;
+          caml_gc_log ("ephe_mark: budget=%ld, left=%ld, done=%ld",
+                       mark_budget, left, work_done);
+          domain_state->stat_major_work_done += work_done;
           commit_major_slice_work (round (work_done / m));
 
           // FIXME: Can we delete this?
@@ -1825,8 +1833,10 @@ caml_gc_log ("mark: budget=%ld, left=%ld, done=%ld", mark_budget, left, work_don
                (budget = get_major_slice_work(mode)) > 0) {
           double s = atomic_load_relaxed (&caml_sweep_per_alloc);
           intnat sweep_budget = budget * s;
+          CAMLassert (sweep_budget > 0);
           intnat left = ephe_sweep (domain_state, budget);
           intnat work_done = sweep_budget - left;
+          domain_state->stat_major_work_done += work_done;
           commit_major_slice_work(round (work_done / s));
         }
 
@@ -2150,6 +2160,7 @@ void set_caml_percent_free (uintnat pf)
   double lambda = 0.833;  /* TODO benchmarks to find the best value */
   double mu = 1 + 2 / lambda;
   double s = 0.5 + (mu + sqrt (o * o + mu * mu)) / o / 2;
+  CAMLassert (s >= 1.);
   double m = lambda * s;
   atomic_store_relaxed (&caml_sweep_per_alloc, s);
   atomic_store_relaxed (&caml_mark_per_alloc, m);
